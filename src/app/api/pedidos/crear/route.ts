@@ -22,6 +22,7 @@ export async function POST(req: Request) {
     tipo, // 'programado' | 'express'
     tipo_vehiculo,
     tipo_servicio_id,
+    detalles_vehiculo,
     lavador_id,
     direccion_texto,
     zona,
@@ -88,6 +89,7 @@ export async function POST(req: Request) {
       zona_id: zona_id ?? null,
       fecha_hora_turno: fecha_hora_turno ?? null,
       tipo_vehiculo,
+      detalles_vehiculo: detalles_vehiculo || null,
       tipo_servicio_id,
       precio_base: precioBase,
       recargo_pct: recargoExpresoPct,

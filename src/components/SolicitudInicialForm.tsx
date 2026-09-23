@@ -2,9 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 
-export function PostularseForm({ usuarioId }: { usuarioId: string }) {
+export function SolicitudInicialForm() {
   const router = useRouter();
   const [bio, setBio] = useState("");
   const [zona, setZona] = useState("");
@@ -17,29 +16,17 @@ export function PostularseForm({ usuarioId }: { usuarioId: string }) {
     setError(null);
     setCargando(true);
 
-    const supabase = createClient();
-
-    // el telefono se guarda en usuarios (no en la solicitud): nunca se
-    // expone publicamente, solo lo ve el propio lavador o el admin.
-    const { error: errorTelefono } = await supabase
-      .from("usuarios")
-      .update({ telefono })
-      .eq("id", usuarioId);
-
-    if (errorTelefono) {
-      setCargando(false);
-      setError(errorTelefono.message);
-      return;
-    }
-
-    const { error } = await supabase
-      .from("solicitudes_lavador")
-      .insert({ usuario_id: usuarioId, bio, zona });
+    const res = await fetch("/api/lavador/postularse", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ bio, zona, telefono }),
+    });
+    const data = await res.json();
 
     setCargando(false);
 
-    if (error) {
-      setError(error.message);
+    if (!res.ok) {
+      setError(data.error ?? "No se pudo enviar la postulación");
       return;
     }
 
@@ -49,6 +36,10 @@ export function PostularseForm({ usuarioId }: { usuarioId: string }) {
   return (
     <form onSubmit={onSubmit} className="space-y-3 border rounded-md p-4">
       <h2 className="font-medium">Postularme como lavador</h2>
+      <p className="text-sm text-neutral-500">
+        Contanos sobre vos. En el siguiente paso vas a poder cargar fotos, precios,
+        zonas y disponibilidad.
+      </p>
 
       <div className="space-y-1">
         <label className="text-sm font-medium">Contame sobre vos</label>
@@ -83,7 +74,7 @@ export function PostularseForm({ usuarioId }: { usuarioId: string }) {
           className="w-full border rounded-md px-3 py-2"
         />
         <p className="text-xs text-neutral-500">
-          Nunca se muestra a los clientes — solo lo usamos internamente.
+          Nunca se muestra a los clientes — lo usamos para contactarte nosotros.
         </p>
       </div>
 
@@ -94,7 +85,7 @@ export function PostularseForm({ usuarioId }: { usuarioId: string }) {
         disabled={cargando}
         className="bg-neutral-900 text-white rounded-md px-4 py-2 disabled:opacity-50"
       >
-        {cargando ? "Enviando..." : "Enviar postulación"}
+        {cargando ? "Enviando..." : "Continuar"}
       </button>
     </form>
   );

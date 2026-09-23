@@ -9,7 +9,12 @@ type Solicitud = {
   bio: string | null;
   zona: string | null;
   creado_en: string;
-  usuario: { nombre: string; apellido: string } | null;
+  email: string | null;
+  usuario: { nombre: string; apellido: string; telefono: string | null } | null;
+  fotos: { tipo: string; url: string }[];
+  companeros: string[];
+  precios: { servicio: string; precio: number }[];
+  zonas: string[];
 };
 
 export function SolicitudesAdminList({ solicitudes }: { solicitudes: Solicitud[] }) {
@@ -56,7 +61,40 @@ export function SolicitudesAdminList({ solicitudes }: { solicitudes: Solicitud[]
             {s.usuario?.nombre} {s.usuario?.apellido}
           </p>
           <p className="text-sm text-neutral-600">{s.bio}</p>
-          <p className="text-sm text-neutral-500">Zona: {s.zona}</p>
+          <p className="text-sm text-neutral-500">Zona (texto): {s.zona}</p>
+          <p className="text-sm text-neutral-500">
+            Contacto: {s.usuario?.telefono || "—"} · {s.email || "—"}
+          </p>
+
+          {s.fotos.length > 0 && (
+            <div className="flex flex-wrap gap-2 pt-1">
+              {s.fotos.map((f, i) => (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  key={i}
+                  src={f.url}
+                  alt={f.tipo}
+                  title={f.tipo}
+                  className="w-14 h-14 object-cover rounded-md border"
+                />
+              ))}
+            </div>
+          )}
+
+          {s.companeros.length > 0 && (
+            <p className="text-sm text-neutral-500">Equipo: {s.companeros.join(", ")}</p>
+          )}
+
+          {s.precios.length > 0 && (
+            <p className="text-sm text-neutral-500">
+              Precios: {s.precios.map((p) => `${p.servicio} $${p.precio.toLocaleString("es-AR")}`).join(" · ")}
+            </p>
+          )}
+
+          {s.zonas.length > 0 && (
+            <p className="text-sm text-neutral-500">Zonas de cobertura: {s.zonas.join(", ")}</p>
+          )}
+
           <p className="text-xs text-neutral-400">
             {new Date(s.creado_en).toLocaleDateString("es-AR")}
           </p>

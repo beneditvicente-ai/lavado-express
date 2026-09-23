@@ -1,24 +1,49 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { distanciaKm } from "@/lib/distancia";
+import { Droplets, Zap, Calendar, MapPin, Gem, Sparkles } from "lucide-react";
+import { EstrellasRating } from "@/components/EstrellasRating";
+
+const UbicacionMapaSelector = dynamic(
+  () => import("@/components/UbicacionMapaSelector").then((m) => m.UbicacionMapaSelector),
+  { ssr: false, loading: () => <div className="h-64 rounded-md border bg-neutral-50" /> }
+);
 
 type TipoServicio = { id: string; nombre: string; descripcion: string | null };
 type ZonaDisponible = { id: string; nombre: string };
-type Paso = "datos" | "modo" | "buscando" | "candidato" | "sin_resultados" | "confirmar" | "listo";
+type Paso =
+  | "datos"
+  | "modo"
+  | "confirmar_ubicacion"
+  | "buscando"
+  | "elegir_lavadores"
+  | "sin_candidatos"
+  | "esperando_lavador"
+  | "lavador_encontrado"
+  | "listo";
 type TipoVehiculo = "auto" | "suv" | "pickup";
 type TipoPedido = "programado" | "express";
 
-type Resultado = {
+type OfertaLavador = {
+  id: string;
+  nombre: string;
+  rating_promedio: number;
+  cantidad_calificaciones: number;
+  fotoUrl: string | null;
+};
+
+type Candidato = {
   id: string;
   nombre: string;
   rating_promedio: number;
   cantidad_calificaciones: number;
   pedidos_completados_count: number;
-  precio: number;
+  precios: Record<string, number>;
   fotoUrl: string | null;
-  companeros: string[];
 };
 
 const VEHICULOS: { valor: TipoVehiculo; etiqueta: string }[] = [
@@ -39,30 +64,127 @@ export function PedirLavadoWizard({
   const [paso, setPaso] = useState<Paso>("datos");
   const [error, setError] = useState<string | null>(null);
 
+  // el lavado básico es el piso obligatorio: nunca se elige el tipo de
+  // servicio de entrada. Si algún lavador candidato ofrece Encerado/Premium,
+  // esa opción aparece recién en el paso de elegir lavadores.
+  const basicoId = tiposServicio.find((t) => t.nombre.toLowerCase().startsWith("basic"))?.id ?? tiposServicio[0]?.id ?? "";
+
   // datos
   const [tipoVehiculo, setTipoVehiculo] = useState<TipoVehiculo>("auto");
-  const [tipoServicioId, setTipoServicioId] = useState(tiposServicio[0]?.id ?? "");
+  const [tipoServicioId, setTipoServicioId] = useState(basicoId);
   const [calle, setCalle] = useState("");
-  const [ciudad, setCiudad] = useState("");
   const [zonaId, setZonaId] = useState(zonasDisponibles[0]?.id ?? "");
+  const [loteBarrio, setLoteBarrio] = useState("");
+  const [detallesVehiculo, setDetallesVehiculo] = useState("");
 
   // modo
   const [tipo, setTipo] = useState<TipoPedido>("express");
   const [fechaHora, setFechaHora] = useState("");
+  const [horasDisponibles, setHorasDisponibles] = useState(2);
 
-  // candidatos: se van mostrando de a uno, como en Uber
-  const [candidatos, setCandidatos] = useState<Resultado[]>([]);
-  const [indiceCandidato, setIndiceCandidato] = useState(0);
-  const [precioFinal, setPrecioFinal] = useState<number | null>(null);
+  // ubicacion exacta en el mapa, tipo Uber (solo express): arranca en el
+  // GPS y se puede arrastrar el pin para ajustar
+  const [ubicacionMapa, setUbicacionMapa] = useState<{ lat: number; lng: number } | null>(null);
+  const [direccionMapa, setDireccionMapa] = useState("");
+  const [geocodificando, setGeocodificando] = useState(false);
 
   const [pedidoId, setPedidoId] = useState<string | null>(null);
+  const [precioFinal, setPrecioFinal] = useState<number | null>(null);
 
-  const candidatoActual = candidatos[indiceCandidato] ?? null;
+  // "a la Uber": el pedido nace sin lavador (tanto express como
+  // programado), el lavador lo acepta primero y recien ahi se sabe el
+  // precio -- nunca se cobra antes de que alguien confirme.
+  const [ofertaLavador, setOfertaLavador] = useState<OfertaLavador | null>(null);
+  const [fechaLimiteExpress, setFechaLimiteExpress] = useState<string | null>(null);
+  const [miUbicacionExpress, setMiUbicacionExpress] = useState<{ lat: number; lng: number } | null>(null);
+  const [distanciaLavadorKm, setDistanciaLavadorKm] = useState<number | null>(null);
+
+  // elegir_lavadores (solo programado): lavadores libres en ese horario/zona
+  // para que el cliente elija a quiénes invitar
+  const [candidatos, setCandidatos] = useState<Candidato[]>([]);
+  const [recargosVehiculo, setRecargosVehiculo] = useState<Record<string, number>>({});
+  const [seleccionados, setSeleccionados] = useState<Set<string>>(new Set());
+  const [filtroPrecioMin, setFiltroPrecioMin] = useState<number | null>(null);
+  const [filtroPrecioMax, setFiltroPrecioMax] = useState<number | null>(null);
+
   const zonaElegida = zonasDisponibles.find((z) => z.id === zonaId);
+
+  const candidatosFiltrados = candidatos.filter((c) => {
+    const precioBase = c.precios[tipoServicioId];
+    if (precioBase == null) return false;
+    const precioFinal = precioBase * (1 + (recargosVehiculo[tipoVehiculo] ?? 0) / 100);
+    if (filtroPrecioMin != null && precioFinal < filtroPrecioMin) return false;
+    if (filtroPrecioMax != null && precioFinal > filtroPrecioMax) return false;
+    return true;
+  });
+
+  // mientras esperamos que un lavador acepte, consultamos cada 3s si ya paso
+  useEffect(() => {
+    if (paso !== "esperando_lavador" || !pedidoId) return;
+
+    const supabase = createClient();
+    const intervalo = setInterval(async () => {
+      const { data: pedido } = await supabase
+        .from("pedidos")
+        .select("estado, lavador_id, precio_total, fecha_limite_express")
+        .eq("id", pedidoId)
+        .single();
+
+      if (pedido?.estado === "pendiente_pago" && pedido.lavador_id) {
+        setFechaLimiteExpress(pedido.fecha_limite_express);
+        const [{ data: publico }, { data: foto }, { data: estadoLavador }] = await Promise.all([
+          supabase
+            .from("lavadores_publicos")
+            .select("id, nombre, rating_promedio, cantidad_calificaciones")
+            .eq("id", pedido.lavador_id)
+            .single(),
+          supabase
+            .from("lavador_fotos")
+            .select("storage_path")
+            .eq("lavador_id", pedido.lavador_id)
+            .eq("tipo", "perfil")
+            .limit(1)
+            .maybeSingle(),
+          supabase
+            .from("lavador_estado_express")
+            .select("lat, lng")
+            .eq("lavador_id", pedido.lavador_id)
+            .maybeSingle(),
+        ]);
+
+        if (miUbicacionExpress && estadoLavador?.lat != null && estadoLavador?.lng != null) {
+          setDistanciaLavadorKm(
+            distanciaKm(miUbicacionExpress.lat, miUbicacionExpress.lng, estadoLavador.lat, estadoLavador.lng)
+          );
+        }
+
+        setOfertaLavador(
+          publico
+            ? {
+                ...publico,
+                fotoUrl: foto
+                  ? supabase.storage.from("lavador-fotos").getPublicUrl(foto.storage_path).data.publicUrl
+                  : null,
+              }
+            : {
+                id: pedido.lavador_id,
+                nombre: "Un lavador",
+                rating_promedio: 0,
+                cantidad_calificaciones: 0,
+                fotoUrl: null,
+              }
+        );
+        setPrecioFinal(pedido.precio_total);
+        setPaso("lavador_encontrado");
+      }
+    }, 3000);
+
+    return () => clearInterval(intervalo);
+  }, [paso, pedidoId, miUbicacionExpress]);
 
   function irAModo(e: React.FormEvent) {
     e.preventDefault();
-    if (!calle.trim() || !ciudad.trim() || !zonaId) {
+    if (!calle.trim() || !zonaId) {
       setError("Completá dirección y zona.");
       return;
     }
@@ -73,163 +195,272 @@ export function PedirLavadoWizard({
   async function buscar() {
     setError(null);
 
-    if (tipo === "programado" && !fechaHora) {
+    if (tipo === "express") {
+      iniciarBusquedaExpress();
+      return;
+    }
+
+    if (!fechaHora) {
       setError("Elegí día y hora.");
       return;
     }
 
+    await buscarLavadoresProgramado();
+  }
+
+  // trae los lavadores de la zona que ofrecen el Básico, están disponibles
+  // ese día/hora (según su horario semanal) y no tienen un bloqueo puntual
+  // que se cruce -- para que el cliente elija a quiénes invitar
+  async function buscarLavadoresProgramado() {
     setPaso("buscando");
     const supabase = createClient();
 
-    // 1) lavadores que ofrecen ese servicio, con su precio
-    const { data: servicios } = await supabase
-      .from("lavador_servicios")
-      .select("lavador_id, precio")
-      .eq("tipo_servicio_id", tipoServicioId)
-      .eq("activo", true);
+    const fecha = new Date(fechaHora);
+    const diaSemana = fecha.getDay();
+    const horaStr = `${String(fecha.getHours()).padStart(2, "0")}:${String(fecha.getMinutes()).padStart(2, "0")}:00`;
+    const fechaStr = fechaHora.slice(0, 10);
 
-    const precioPorLavador = new Map((servicios ?? []).map((s) => [s.lavador_id, s.precio]));
-
-    // 2) lavadores que cubren la zona elegida
-    const { data: zonas } = await supabase
+    const { data: zonaRows } = await supabase
       .from("lavador_zonas")
       .select("lavador_id")
       .eq("zona_id", zonaId);
-    const idsPorZona = new Set((zonas ?? []).map((z) => z.lavador_id));
-
-    // 3) disponibilidad segun el modo
-    let idsDisponibles = new Set<string>();
-    if (tipo === "express") {
-      const { data: disponibles } = await supabase
-        .from("lavador_estado_express")
-        .select("lavador_id")
-        .eq("disponible_ahora", true);
-      idsDisponibles = new Set((disponibles ?? []).map((d) => d.lavador_id));
-    } else {
-      const fecha = new Date(fechaHora);
-      const diaSemana = fecha.getDay();
-      const hora = fecha.toTimeString().slice(0, 8);
-      const { data: disponibles } = await supabase
-        .from("lavador_disponibilidad")
-        .select("lavador_id, hora_inicio, hora_fin")
-        .eq("dia_semana", diaSemana)
-        .lte("hora_inicio", hora)
-        .gte("hora_fin", hora);
-      idsDisponibles = new Set((disponibles ?? []).map((d) => d.lavador_id));
-    }
-
-    const idsCandidatos = [...precioPorLavador.keys()].filter(
-      (id) => idsPorZona.has(id) && idsDisponibles.has(id)
-    );
-
-    if (idsCandidatos.length === 0) {
+    const idsZona = (zonaRows ?? []).map((r) => r.lavador_id);
+    if (idsZona.length === 0) {
       setCandidatos([]);
-      setPaso("sin_resultados");
+      setPaso("sin_candidatos");
       return;
     }
 
-    const [{ data: publicos }, { data: fotos }, { data: companeros }, { data: vehiculoRecargo }] =
-      await Promise.all([
-        supabase
-          .from("lavadores_publicos")
-          .select("id, nombre, rating_promedio, cantidad_calificaciones, pedidos_completados_count")
-          .in("id", idsCandidatos),
-        supabase
-          .from("lavador_fotos")
-          .select("lavador_id, storage_path")
-          .in("lavador_id", idsCandidatos)
-          .eq("tipo", "perfil"),
-        supabase.from("lavador_companeros").select("lavador_id, nombre").in("lavador_id", idsCandidatos),
-        supabase.from("vehiculo_recargos").select("recargo_pct").eq("tipo_vehiculo", tipoVehiculo).single(),
-      ]);
-
-    let recargoExpresoPct = 0;
-    if (tipo === "express") {
-      const { data: config } = await supabase
-        .from("configuracion_app")
-        .select("valor")
-        .eq("clave", "recargo_express_pct")
-        .single();
-      recargoExpresoPct = config?.valor ?? 0;
+    const { data: servRows } = await supabase
+      .from("lavador_servicios")
+      .select("lavador_id, tipo_servicio_id, precio")
+      .eq("activo", true)
+      .in("lavador_id", idsZona);
+    const preciosPorLavador = new Map<string, Record<string, number>>();
+    for (const r of servRows ?? []) {
+      const mapa = preciosPorLavador.get(r.lavador_id) ?? {};
+      mapa[r.tipo_servicio_id] = r.precio;
+      preciosPorLavador.set(r.lavador_id, mapa);
+    }
+    const idsConBasico = [...preciosPorLavador.entries()]
+      .filter(([, precios]) => precios[basicoId] != null)
+      .map(([id]) => id);
+    if (idsConBasico.length === 0) {
+      setCandidatos([]);
+      setPaso("sin_candidatos");
+      return;
     }
 
-    const fotoPorLavador = new Map((fotos ?? []).map((f) => [f.lavador_id, f.storage_path]));
+    const { data: dispRows } = await supabase
+      .from("lavador_disponibilidad")
+      .select("lavador_id, hora_inicio, hora_fin")
+      .eq("dia_semana", diaSemana)
+      .in("lavador_id", idsConBasico);
+    const idsDisponibles = (dispRows ?? [])
+      .filter((d) => d.hora_inicio <= horaStr && d.hora_fin >= horaStr)
+      .map((d) => d.lavador_id);
+    if (idsDisponibles.length === 0) {
+      setCandidatos([]);
+      setPaso("sin_candidatos");
+      return;
+    }
 
-    const listaOrdenada: Resultado[] = (publicos ?? [])
-      .map((p) => {
-        const precioBase =
-          (precioPorLavador.get(p.id) ?? 0) * (1 + (vehiculoRecargo?.recargo_pct ?? 0) / 100);
-        const precio = Math.round(precioBase * (1 + recargoExpresoPct / 100) * 100) / 100;
-        const storagePath = fotoPorLavador.get(p.id);
-        return {
-          id: p.id,
-          nombre: p.nombre,
-          rating_promedio: p.rating_promedio,
-          cantidad_calificaciones: p.cantidad_calificaciones,
-          pedidos_completados_count: p.pedidos_completados_count,
-          precio,
-          fotoUrl: storagePath
-            ? supabase.storage.from("lavador-fotos").getPublicUrl(storagePath).data.publicUrl
-            : null,
-          companeros: (companeros ?? [])
-            .filter((c) => c.lavador_id === p.id)
-            .map((c) => c.nombre),
-        };
-      })
-      .sort(
-        (a, b) =>
-          b.pedidos_completados_count - a.pedidos_completados_count ||
-          b.rating_promedio - a.rating_promedio
+    const { data: bloqueosRows } = await supabase
+      .from("lavador_bloqueos")
+      .select("lavador_id, hora_inicio, hora_fin")
+      .eq("fecha", fechaStr)
+      .in("lavador_id", idsDisponibles);
+    const idsBloqueados = new Set(
+      (bloqueosRows ?? [])
+        .filter((b) => b.hora_inicio <= horaStr && b.hora_fin >= horaStr)
+        .map((b) => b.lavador_id)
+    );
+    const idsFinal = idsDisponibles.filter((id) => !idsBloqueados.has(id));
+    if (idsFinal.length === 0) {
+      setCandidatos([]);
+      setPaso("sin_candidatos");
+      return;
+    }
+
+    const [{ data: publicos }, { data: fotos }, { data: recargos }] = await Promise.all([
+      supabase
+        .from("lavadores_publicos")
+        .select("id, nombre, rating_promedio, cantidad_calificaciones, pedidos_completados_count")
+        .in("id", idsFinal),
+      supabase
+        .from("lavador_fotos")
+        .select("lavador_id, storage_path")
+        .eq("tipo", "perfil")
+        .in("lavador_id", idsFinal),
+      supabase.from("vehiculo_recargos").select("tipo_vehiculo, recargo_pct"),
+    ]);
+
+    const fotoPorLavador = new Map<string, string>();
+    for (const f of fotos ?? []) {
+      fotoPorLavador.set(
+        f.lavador_id,
+        supabase.storage.from("lavador-fotos").getPublicUrl(f.storage_path).data.publicUrl
       );
+    }
 
-    setCandidatos(listaOrdenada);
-    setIndiceCandidato(0);
-    setPrecioFinal(listaOrdenada[0]?.precio ?? null);
-    setPaso("candidato");
-  }
+    const lista: Candidato[] = (publicos ?? []).map((p) => ({
+      id: p.id,
+      nombre: p.nombre,
+      rating_promedio: p.rating_promedio,
+      cantidad_calificaciones: p.cantidad_calificaciones,
+      pedidos_completados_count: p.pedidos_completados_count,
+      precios: preciosPorLavador.get(p.id) ?? {},
+      fotoUrl: fotoPorLavador.get(p.id) ?? null,
+    }));
 
-  function pedirOtro() {
-    const siguiente = indiceCandidato + 1;
-    if (siguiente >= candidatos.length) {
-      setPaso("sin_resultados");
+    if (lista.length === 0) {
+      setPaso("sin_candidatos");
       return;
     }
-    setIndiceCandidato(siguiente);
-    setPrecioFinal(candidatos[siguiente].precio);
+
+    setRecargosVehiculo(Object.fromEntries((recargos ?? []).map((r) => [r.tipo_vehiculo, r.recargo_pct])));
+    setCandidatos(lista);
+    setTipoServicioId(basicoId);
+    setSeleccionados(new Set());
+    setFiltroPrecioMin(null);
+    setFiltroPrecioMax(null);
+    setPaso("elegir_lavadores");
   }
 
-  function aceptar() {
-    setPaso("confirmar");
-  }
-
-  async function confirmarYCrearPedido() {
-    if (!candidatoActual) return;
+  async function enviarInvitaciones() {
+    if (seleccionados.size === 0) return;
     setError(null);
+    setPaso("buscando");
 
-    const res = await fetch("/api/pedidos/crear", {
+    const res = await fetch("/api/pedidos/crear-solicitud-programado", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        tipo,
         tipo_vehiculo: tipoVehiculo,
         tipo_servicio_id: tipoServicioId,
-        lavador_id: candidatoActual.id,
-        direccion_texto: `${calle}, ${ciudad}`,
-        zona: zonaElegida?.nombre,
+        detalles_vehiculo: detallesVehiculo,
+        direccion_texto: loteBarrio.trim() ? `${calle} — ${loteBarrio.trim()}` : calle,
         zona_id: zonaId,
-        fecha_hora_turno: tipo === "programado" ? new Date(fechaHora).toISOString() : null,
+        fecha_hora_turno: new Date(fechaHora).toISOString(),
+        lavador_ids: [...seleccionados],
       }),
     });
-
     const data = await res.json();
 
     if (!res.ok) {
-      setError(data.error ?? "No se pudo crear el pedido");
+      setError(data.error ?? "No se pudo enviar la solicitud");
+      setPaso("elegir_lavadores");
       return;
     }
 
     setPedidoId(data.pedidoId);
-    setPrecioFinal(data.precioTotal);
+    setPaso("esperando_lavador");
+  }
+
+  function obtenerUbicacion(): Promise<{ lat: number; lng: number }> {
+    return new Promise((resolve, reject) => {
+      if (!navigator.geolocation) {
+        reject(new Error("Tu navegador no soporta ubicación."));
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        () => reject(new Error("Necesitamos tu ubicación para buscar lavadores cerca tuyo.")),
+        { timeout: 10000 }
+      );
+    });
+  }
+
+  async function geocodificar(lat: number, lng: number): Promise<string> {
+    try {
+      const res = await fetch(`/api/geocodificar?lat=${lat}&lng=${lng}`);
+      const data = await res.json();
+      return data.direccion ?? calle;
+    } catch {
+      return calle;
+    }
+  }
+
+  // paso 1 (como Uber): tomamos el GPS y mostramos el mapa para que
+  // confirme/ajuste el pin antes de buscar
+  async function iniciarBusquedaExpress() {
+    setError(null);
+    setPaso("buscando");
+
+    let ubicacion: { lat: number; lng: number };
+    try {
+      ubicacion = await obtenerUbicacion();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No pudimos obtener tu ubicación.");
+      setPaso("modo");
+      return;
+    }
+
+    setUbicacionMapa(ubicacion);
+    setGeocodificando(true);
+    const direccion = await geocodificar(ubicacion.lat, ubicacion.lng);
+    setDireccionMapa(direccion);
+    setGeocodificando(false);
+    setPaso("confirmar_ubicacion");
+  }
+
+  async function moverPin(lat: number, lng: number) {
+    setUbicacionMapa({ lat, lng });
+    setGeocodificando(true);
+    const direccion = await geocodificar(lat, lng);
+    setDireccionMapa(direccion);
+    setGeocodificando(false);
+  }
+
+  // paso 2: confirmado el pin, recien ahi se crea el pedido de verdad
+  async function confirmarUbicacionYBuscar() {
+    if (!ubicacionMapa) return;
+    setError(null);
+    setPaso("buscando");
+
+    setMiUbicacionExpress(ubicacionMapa);
+
+    const res = await fetch("/api/pedidos/crear-solicitud-express", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tipo_vehiculo: tipoVehiculo,
+        tipo_servicio_id: tipoServicioId,
+        detalles_vehiculo: detallesVehiculo,
+        direccion_texto: loteBarrio.trim() ? `${direccionMapa} — ${loteBarrio.trim()}` : direccionMapa,
+        zona_id: zonaId,
+        lat: ubicacionMapa.lat,
+        lng: ubicacionMapa.lng,
+        horas_disponibles: horasDisponibles,
+      }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      setError(data.error ?? "No se pudo iniciar la búsqueda");
+      setPaso("confirmar_ubicacion");
+      return;
+    }
+
+    setPedidoId(data.pedidoId);
+    setPaso("esperando_lavador");
+  }
+
+  async function buscarOtro() {
+    if (!pedidoId) return;
+    setError(null);
+    await fetch(`/api/pedidos/${pedidoId}/liberar`, { method: "POST" });
+    setOfertaLavador(null);
+    setPrecioFinal(null);
+    setPaso("esperando_lavador");
+  }
+
+  async function cancelarBusqueda() {
+    if (!pedidoId) return;
+    await fetch(`/api/pedidos/${pedidoId}/cancelar-busqueda`, { method: "POST" });
+    setPedidoId(null);
+    setOfertaLavador(null);
+    setPaso("modo");
   }
 
   async function pagar() {
@@ -240,7 +471,12 @@ export function PedirLavadoWizard({
     const data = await res.json();
 
     if (!res.ok) {
-      setError(data.error ?? "No se pudo procesar el pago");
+      // lo mas probable es que el lavador haya cancelado su aceptación
+      // antes de que pagaras -- el pedido vuelve a estar buscando otro
+      setError("Ese lavador ya no puede tomar tu pedido. Seguimos buscando otro...");
+      setOfertaLavador(null);
+      setPrecioFinal(null);
+      setPaso("esperando_lavador");
       return;
     }
 
@@ -250,11 +486,19 @@ export function PedirLavadoWizard({
 
   if (paso === "listo") {
     return (
-      <div className="border rounded-md p-6 text-center space-y-2">
+      <div className="border rounded-md p-6 text-center space-y-4">
         <p className="text-lg font-medium">¡Turno confirmado!</p>
         <p className="text-sm text-neutral-500">
           (Pago simulado — todavía falta conectar Mercado Pago de verdad)
         </p>
+        <div className="flex gap-2 justify-center">
+          <a href="/cliente/pedidos" className="border rounded-md px-4 py-2 text-sm">
+            Ver mis pedidos
+          </a>
+          <a href="/cliente" className="bg-neutral-900 text-white rounded-md px-4 py-2 text-sm">
+            Volver al inicio
+          </a>
+        </div>
       </div>
     );
   }
@@ -284,33 +528,22 @@ export function PedirLavadoWizard({
           </div>
 
           <div className="space-y-1">
-            <label className="text-sm font-medium">Tipo de servicio</label>
-            <div className="space-y-2">
-              {tiposServicio.map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => setTipoServicioId(t.id)}
-                  className={`w-full text-left rounded-md px-3 py-2 border-2 ${
-                    tipoServicioId === t.id
-                      ? "border-neutral-900 bg-neutral-50"
-                      : "border-neutral-200"
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`w-4 h-4 rounded-full border-2 flex-shrink-0 ${
-                        tipoServicioId === t.id
-                          ? "border-neutral-900 bg-neutral-900"
-                          : "border-neutral-300"
-                      }`}
-                    />
-                    <p className="font-medium text-sm">{t.nombre}</p>
-                  </div>
-                  <p className="text-xs text-neutral-500 pl-6">{t.descripcion}</p>
-                </button>
-              ))}
-            </div>
+            <label className="text-sm font-medium">Detalles del vehículo</label>
+            <input
+              value={detallesVehiculo}
+              onChange={(e) => setDetallesVehiculo(e.target.value)}
+              placeholder="ej: Corolla gris, patente AB123CD"
+              className="w-full border rounded-md px-3 py-2"
+            />
+            <p className="text-xs text-neutral-500">Así el lavador lo reconoce al llegar.</p>
+          </div>
+
+          <div className="rounded-lg px-3 py-2.5 bg-neutral-50 border border-neutral-200 flex items-center gap-2">
+            <Droplets size={18} strokeWidth={1.75} className="text-neutral-700 flex-shrink-0" />
+            <p className="text-xs text-neutral-600">
+              El lavado incluye el servicio Básico. Si alguno de los lavadores disponibles ofrece
+              Encerado o Premium, vas a poder elegirlo más adelante.
+            </p>
           </div>
 
           <div className="space-y-1">
@@ -323,17 +556,12 @@ export function PedirLavadoWizard({
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <input
-              value={ciudad}
-              onChange={(e) => setCiudad(e.target.value)}
-              placeholder="Ciudad"
-              className="border rounded-md px-3 py-2"
-            />
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Localidad</label>
             <select
               value={zonaId}
               onChange={(e) => setZonaId(e.target.value)}
-              className="border rounded-md px-3 py-2"
+              className="w-full border rounded-md px-3 py-2"
             >
               {zonasDisponibles.map((z) => (
                 <option key={z.id} value={z.id}>
@@ -341,6 +569,19 @@ export function PedirLavadoWizard({
                 </option>
               ))}
             </select>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Lote / Barrio (opcional)</label>
+            <input
+              value={loteBarrio}
+              onChange={(e) => setLoteBarrio(e.target.value)}
+              placeholder="ej: Lote 45, Barrio Los Álamos"
+              className="w-full border rounded-md px-3 py-2"
+            />
+            <p className="text-xs text-neutral-500">
+              Si estás en un barrio cerrado o el GPS no marca el lote exacto, agregalo acá.
+            </p>
           </div>
 
           {error && <p className="text-sm text-red-600">{error}</p>}
@@ -358,36 +599,66 @@ export function PedirLavadoWizard({
           <div className="flex gap-2">
             <button
               onClick={() => setTipo("express")}
-              className={`flex-1 border rounded-md px-3 py-3 ${
-                tipo === "express" ? "bg-neutral-900 text-white" : ""
+              className={`flex-1 rounded-lg px-3 py-4 border-2 text-left ${
+                tipo === "express" ? "bg-neutral-900 text-white border-neutral-900" : "border-neutral-200"
               }`}
             >
-              Express (ahora)
+              <Zap size={22} strokeWidth={1.75} />
+              <p className="font-medium text-sm mt-1">Express</p>
+              <p className={`text-xs mt-0.5 ${tipo === "express" ? "text-neutral-300" : "text-neutral-500"}`}>
+                Alguien viene ya, con GPS en vivo
+              </p>
             </button>
             <button
               onClick={() => setTipo("programado")}
-              className={`flex-1 border rounded-md px-3 py-3 ${
-                tipo === "programado" ? "bg-neutral-900 text-white" : ""
+              className={`flex-1 rounded-lg px-3 py-4 border-2 text-left ${
+                tipo === "programado" ? "bg-neutral-900 text-white border-neutral-900" : "border-neutral-200"
               }`}
             >
-              Programado
+              <Calendar size={22} strokeWidth={1.75} />
+              <p className="font-medium text-sm mt-1">Programado</p>
+              <p className={`text-xs mt-0.5 ${tipo === "programado" ? "text-neutral-300" : "text-neutral-500"}`}>
+                Elegís día y hora
+              </p>
             </button>
           </div>
 
           {tipo === "programado" && (
-            <input
-              type="datetime-local"
-              value={fechaHora}
-              onChange={(e) => setFechaHora(e.target.value)}
-              className="w-full border rounded-md px-3 py-2"
-            />
+            <div className="space-y-2">
+              <input
+                type="datetime-local"
+                value={fechaHora}
+                onChange={(e) => setFechaHora(e.target.value)}
+                className="w-full border rounded-md px-3 py-2"
+              />
+              <p className="text-sm text-neutral-500">
+                Te mostramos los lavadores libres en ese horario para que elijas a quién invitar —
+                podés invitar a varios. El primero que confirma se queda con el turno. No se te
+                cobra nada hasta entonces.
+              </p>
+            </div>
           )}
 
           {tipo === "express" && (
-            <p className="text-sm text-neutral-500">
-              Te van a ir apareciendo lavadores disponibles ahora mismo, de a uno. Podés
-              aceptar o pedir el siguiente. No se te cobra nada hasta que aceptes y confirmes.
-            </p>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">¿Cuánto tiempo podés dejar el auto?</label>
+              <select
+                value={horasDisponibles}
+                onChange={(e) => setHorasDisponibles(Number(e.target.value))}
+                className="w-full border rounded-md px-3 py-2"
+              >
+                <option value={2}>2 horas (mínimo)</option>
+                <option value={3}>3 horas</option>
+                <option value={4}>4 horas</option>
+                <option value={6}>6 horas</option>
+                <option value={8}>Todo el día</option>
+              </select>
+              <p className="text-sm text-neutral-500">
+                Vamos a pedirte tu ubicación exacta y se lo vamos a mostrar a los lavadores junto
+                con este tiempo, para que decidan si te pueden aceptar. No se te cobra nada hasta
+                que confirmes.
+              </p>
+            </div>
           )}
 
           {error && <p className="text-sm text-red-600">{error}</p>}
@@ -403,99 +674,260 @@ export function PedirLavadoWizard({
         </div>
       )}
 
+      {paso === "confirmar_ubicacion" && ubicacionMapa && (
+        <div className="space-y-3">
+          <h2 className="font-medium">Confirmá dónde está el auto</h2>
+          <p className="text-sm text-neutral-500">
+            Movés el pin si no es exacto — esto es lo que va a ver el lavador.
+          </p>
+
+          <UbicacionMapaSelector posicion={[ubicacionMapa.lat, ubicacionMapa.lng]} onMover={moverPin} />
+
+          <p className="text-sm flex items-center gap-1.5">
+            <MapPin size={16} className="flex-shrink-0 text-neutral-500" />
+            {geocodificando ? "Buscando dirección..." : direccionMapa}
+          </p>
+
+          {error && <p className="text-sm text-red-600">{error}</p>}
+
+          <div className="flex gap-2">
+            <button onClick={() => setPaso("modo")} className="border rounded-md px-4 py-2">
+              Volver
+            </button>
+            <button
+              onClick={confirmarUbicacionYBuscar}
+              disabled={geocodificando}
+              className="flex-1 bg-neutral-900 text-white rounded-md px-4 py-2 disabled:opacity-50"
+            >
+              Confirmar y buscar lavador
+            </button>
+          </div>
+        </div>
+      )}
+
       {paso === "buscando" && <p className="text-neutral-500">Buscando lavadores...</p>}
 
-      {paso === "sin_resultados" && (
-        <div className="space-y-3">
-          <h2 className="font-medium">Sin resultados</h2>
-          <p className="text-sm text-neutral-600">
-            No encontramos (más) lavadores disponibles en tu zona
-            {tipo === "express" ? " en este momento" : " para ese horario"}. No se
-            realizó ningún cobro.
-          </p>
-          <button onClick={() => setPaso("modo")} className="border rounded-md px-4 py-2">
-            Probar otra opción
+      {paso === "sin_candidatos" && (
+        <div className="space-y-3 text-center py-6">
+          <p className="font-medium">No encontramos lavadores libres en ese horario y localidad.</p>
+          <p className="text-sm text-neutral-500">Probá con otro día/hora, o usá el modo Express.</p>
+          <button onClick={() => setPaso("modo")} className="border rounded-md px-4 py-2 text-sm">
+            Volver
           </button>
         </div>
       )}
 
-      {paso === "candidato" && candidatoActual && (
+      {paso === "elegir_lavadores" && (
         <div className="space-y-3">
-          <h2 className="font-medium">Te ofrece el turno:</h2>
+          <h2 className="font-medium">Elegí a quién invitar</h2>
+          <p className="text-sm text-neutral-500">
+            Podés invitar a varios — el primero que confirme se queda con el turno.
+          </p>
 
-          <div className="border rounded-md p-4 flex gap-4">
-            {candidatoActual.fotoUrl ? (
+          <div className="flex gap-2 flex-wrap">
+            {tiposServicio
+              .filter((t) => t.id === basicoId || candidatos.some((c) => c.precios[t.id] != null))
+              .map((t) => {
+                const Icono = t.id === basicoId ? Droplets : t.nombre.toLowerCase().includes("premium") ? Gem : Sparkles;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => {
+                      setTipoServicioId(t.id);
+                      setSeleccionados(new Set());
+                    }}
+                    className={`flex items-center gap-1.5 border rounded-full px-3 py-1.5 text-sm ${
+                      tipoServicioId === t.id ? "bg-neutral-900 text-white border-neutral-900" : "border-neutral-200"
+                    }`}
+                  >
+                    <Icono size={14} strokeWidth={1.75} />
+                    {t.nombre}
+                  </button>
+                );
+              })}
+          </div>
+
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-neutral-500 flex-shrink-0">Precio</span>
+            <input
+              type="number"
+              placeholder="Mín"
+              value={filtroPrecioMin ?? ""}
+              onChange={(e) => setFiltroPrecioMin(e.target.value ? Number(e.target.value) : null)}
+              className="w-full border rounded-md px-2 py-1.5"
+            />
+            <span className="text-neutral-400">–</span>
+            <input
+              type="number"
+              placeholder="Máx"
+              value={filtroPrecioMax ?? ""}
+              onChange={(e) => setFiltroPrecioMax(e.target.value ? Number(e.target.value) : null)}
+              className="w-full border rounded-md px-2 py-1.5"
+            />
+          </div>
+
+          {candidatosFiltrados.length === 0 ? (
+            <p className="text-sm text-neutral-500 py-4 text-center">
+              Ningún lavador ofrece ese servicio en ese rango de precio.
+            </p>
+          ) : (
+            <>
+              <label className="flex items-center gap-2 text-sm font-medium border-b pb-2">
+                <input
+                  type="checkbox"
+                  checked={seleccionados.size === candidatosFiltrados.length}
+                  onChange={(e) =>
+                    setSeleccionados(
+                      e.target.checked ? new Set(candidatosFiltrados.map((c) => c.id)) : new Set()
+                    )
+                  }
+                />
+                Seleccionar todos ({candidatosFiltrados.length})
+              </label>
+
+              <div className="space-y-2 max-h-96 overflow-y-auto">
+                {candidatosFiltrados.map((c) => {
+                  const precioBase = c.precios[tipoServicioId];
+                  const precioFinal =
+                    precioBase != null
+                      ? Math.round(precioBase * (1 + (recargosVehiculo[tipoVehiculo] ?? 0) / 100) * 100) / 100
+                      : null;
+                  const marcado = seleccionados.has(c.id);
+                  return (
+                    <label
+                      key={c.id}
+                      className={`flex items-center gap-3 border rounded-md p-3 cursor-pointer ${
+                        marcado ? "border-neutral-900 bg-neutral-50" : "border-neutral-200"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={marcado}
+                        onChange={() =>
+                          setSeleccionados((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(c.id)) next.delete(c.id);
+                            else next.add(c.id);
+                            return next;
+                          })
+                        }
+                      />
+                      {c.fotoUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={c.fotoUrl}
+                          alt={c.nombre}
+                          className="w-10 h-10 rounded-full object-cover flex-shrink-0"
+                        />
+                      ) : (
+                        <div className="w-10 h-10 rounded-full bg-neutral-200 flex-shrink-0" />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{c.nombre}</p>
+                        <p className="text-xs text-neutral-500 flex items-center gap-1">
+                          <EstrellasRating puntaje={c.rating_promedio} size={11} />
+                          {c.rating_promedio.toFixed(1)} ({c.cantidad_calificaciones}) · {c.pedidos_completados_count}{" "}
+                          lavados
+                        </p>
+                      </div>
+                      <p className="text-sm font-medium flex-shrink-0">
+                        {precioFinal != null ? `$${precioFinal.toLocaleString("es-AR")}` : "—"}
+                      </p>
+                    </label>
+                  );
+                })}
+              </div>
+            </>
+          )}
+
+          {error && <p className="text-sm text-red-600">{error}</p>}
+
+          <div className="flex gap-2">
+            <button onClick={() => setPaso("modo")} className="border rounded-md px-4 py-2">
+              Volver
+            </button>
+            <button
+              onClick={enviarInvitaciones}
+              disabled={seleccionados.size === 0}
+              className="flex-1 bg-neutral-900 text-white rounded-md px-4 py-2 disabled:opacity-50"
+            >
+              Invitar a {seleccionados.size || ""} lavador{seleccionados.size === 1 ? "" : "es"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {paso === "esperando_lavador" && (
+        <div className="space-y-3 text-center py-6">
+          <p className="font-medium">
+            {tipo === "express" ? "Buscando un lavador cerca tuyo..." : "Esperando que algún lavador confirme..."}
+          </p>
+          <p className="text-sm text-neutral-500">
+            En cuanto alguien acepte, te avisamos acá mismo. Todavía no se te cobró nada.
+          </p>
+          {error && <p className="text-sm text-red-600">{error}</p>}
+          <button onClick={cancelarBusqueda} className="border rounded-md px-4 py-2 text-sm">
+            Cancelar búsqueda
+          </button>
+        </div>
+      )}
+
+      {paso === "lavador_encontrado" && ofertaLavador && (
+        <div className="space-y-3">
+          <h2 className="font-medium">¡Un lavador aceptó tu pedido!</h2>
+
+          <div className="border rounded-md p-4 flex gap-4 items-center">
+            {ofertaLavador.fotoUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={candidatoActual.fotoUrl}
-                alt={candidatoActual.nombre}
+                src={ofertaLavador.fotoUrl}
+                alt={ofertaLavador.nombre}
                 className="w-16 h-16 rounded-full object-cover flex-shrink-0"
               />
             ) : (
               <div className="w-16 h-16 rounded-full bg-neutral-200 flex-shrink-0" />
             )}
             <div className="flex-1">
-              <p className="font-medium">{candidatoActual.nombre}</p>
-              <p className="text-xs text-neutral-500">
-                ★ {candidatoActual.rating_promedio.toFixed(1)} (
-                {candidatoActual.cantidad_calificaciones})
+              <p className="font-medium">{ofertaLavador.nombre}</p>
+              <p className="text-xs text-neutral-500 flex items-center gap-1">
+                <EstrellasRating puntaje={ofertaLavador.rating_promedio} size={12} />
+                {ofertaLavador.rating_promedio.toFixed(1)} ({ofertaLavador.cantidad_calificaciones})
               </p>
-              {candidatoActual.companeros.length > 0 && (
-                <p className="text-xs text-neutral-500">
-                  Con: {candidatoActual.companeros.join(", ")}
+              <p className="font-medium mt-1">${precioFinal?.toLocaleString("es-AR")}</p>
+              {distanciaLavadorKm != null && (
+                <p className="text-xs text-neutral-500">A {distanciaLavadorKm.toFixed(1)} km tuyo</p>
+              )}
+              {fechaLimiteExpress && (
+                <p className="text-xs text-amber-600">
+                  Se compromete a tenerlo listo antes de las{" "}
+                  {new Date(fechaLimiteExpress).toLocaleTimeString("es-AR", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
                 </p>
               )}
-              <p className="font-medium mt-1">
-                ${candidatoActual.precio.toLocaleString("es-AR")}
-              </p>
+              <a
+                href={`/lavadores/${ofertaLavador.id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs underline text-neutral-500"
+              >
+                Ver perfil
+              </a>
             </div>
-          </div>
-
-          <div className="flex gap-2">
-            <button onClick={pedirOtro} className="flex-1 border rounded-md px-4 py-2">
-              Buscar otro
-            </button>
-            <button
-              onClick={aceptar}
-              className="flex-1 bg-neutral-900 text-white rounded-md px-4 py-2"
-            >
-              Aceptar
-            </button>
-          </div>
-        </div>
-      )}
-
-      {paso === "confirmar" && candidatoActual && (
-        <div className="space-y-3">
-          <h2 className="font-medium">Confirmar turno</h2>
-          <div className="text-sm space-y-1">
-            <p>
-              Lavador: <span className="font-medium">{candidatoActual.nombre}</span>
-            </p>
-            <p>
-              Precio: <span className="font-medium">${precioFinal?.toLocaleString("es-AR")}</span>
-            </p>
           </div>
 
           {error && <p className="text-sm text-red-600">{error}</p>}
 
-          {!pedidoId ? (
-            <div className="flex gap-2">
-              <button onClick={() => setPaso("candidato")} className="border rounded-md px-4 py-2">
-                Volver
-              </button>
-              <button
-                onClick={confirmarYCrearPedido}
-                className="bg-neutral-900 text-white rounded-md px-4 py-2"
-              >
-                Confirmar
-              </button>
-            </div>
-          ) : (
-            <button onClick={pagar} className="bg-neutral-900 text-white rounded-md px-4 py-2">
-              Pagar ${precioFinal?.toLocaleString("es-AR")} (simulado)
+          <div className="flex gap-2">
+            <button onClick={buscarOtro} className="flex-1 border rounded-md px-4 py-2">
+              Buscar otro
             </button>
-          )}
+            <button onClick={pagar} className="flex-1 bg-neutral-900 text-white rounded-md px-4 py-2">
+              Aceptar y pagar
+            </button>
+          </div>
         </div>
       )}
     </div>
