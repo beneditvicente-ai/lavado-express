@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
-import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { distanciaKm } from "@/lib/distancia";
 import { Droplets, Zap, Calendar, MapPin, Gem, Sparkles } from "lucide-react";
@@ -23,8 +22,7 @@ type Paso =
   | "elegir_lavadores"
   | "sin_candidatos"
   | "esperando_lavador"
-  | "lavador_encontrado"
-  | "listo";
+  | "lavador_encontrado";
 type TipoVehiculo = "auto" | "suv" | "pickup";
 type TipoPedido = "programado" | "express";
 
@@ -60,7 +58,6 @@ export function PedirLavadoWizard({
   tiposServicio: TipoServicio[];
   zonasDisponibles: ZonaDisponible[];
 }) {
-  const router = useRouter();
   const [paso, setPaso] = useState<Paso>("datos");
   const [error, setError] = useState<string | null>(null);
 
@@ -480,27 +477,9 @@ export function PedirLavadoWizard({
       return;
     }
 
-    setPaso("listo");
-    router.refresh();
-  }
-
-  if (paso === "listo") {
-    return (
-      <div className="border rounded-md p-6 text-center space-y-4">
-        <p className="text-lg font-medium">¡Turno confirmado!</p>
-        <p className="text-sm text-neutral-500">
-          (Pago simulado — todavía falta conectar Mercado Pago de verdad)
-        </p>
-        <div className="flex gap-2 justify-center">
-          <a href="/cliente/pedidos" className="border rounded-md px-4 py-2 text-sm">
-            Ver mis pedidos
-          </a>
-          <a href="/cliente" className="bg-neutral-900 text-white rounded-md px-4 py-2 text-sm">
-            Volver al inicio
-          </a>
-        </div>
-      </div>
-    );
+    // el turno se confirma recien cuando llega el webhook de Mercado Pago
+    // con el pago aprobado -- acá solo redirigimos al checkout
+    window.location.href = data.url;
   }
 
   return (
