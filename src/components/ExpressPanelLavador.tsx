@@ -35,10 +35,12 @@ export function ExpressPanelLavador({
   lavadorId,
   pedidosIniciales,
   posicionInicial,
+  serviciosOfrecidos,
 }: {
   lavadorId: string;
   pedidosIniciales: Pedido[];
   posicionInicial: [number, number] | null;
+  serviciosOfrecidos: string[];
 }) {
   const router = useRouter();
   const [pedidos, setPedidos] = useState(pedidosIniciales);
@@ -72,8 +74,9 @@ export function ExpressPanelLavador({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // refresca la lista de pedidos "buscando" cada 8s
+  // refresca la lista de pedidos "buscando" cada 8s (solo los servicios que este lavador ofrece)
   useEffect(() => {
+    if (serviciosOfrecidos.length === 0) return;
     const intervalo = setInterval(async () => {
       const supabase = createClient();
       const { data } = await supabase
@@ -82,11 +85,12 @@ export function ExpressPanelLavador({
         .eq("estado", "buscando")
         .eq("tipo", "express")
         .is("lavador_id", null)
+        .in("tipo_servicio_id", serviciosOfrecidos)
         .order("creado_en", { ascending: false });
       setPedidos(data ?? []);
     }, 8000);
     return () => clearInterval(intervalo);
-  }, []);
+  }, [serviciosOfrecidos]);
 
   async function aceptar(id: string) {
     setError(null);

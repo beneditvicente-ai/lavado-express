@@ -50,6 +50,13 @@ const VEHICULOS: { valor: TipoVehiculo; etiqueta: string }[] = [
   { valor: "pickup", etiqueta: "Pick up" },
 ];
 
+function iconoServicio(nombre: string) {
+  const n = nombre.toLowerCase();
+  if (n.includes("encerado")) return Gem;
+  if (n.includes("interior")) return Sparkles;
+  return Droplets;
+}
+
 export function PedirLavadoWizard({
   tiposServicio,
   zonasDisponibles,
@@ -61,14 +68,9 @@ export function PedirLavadoWizard({
   const [paso, setPaso] = useState<Paso>("datos");
   const [error, setError] = useState<string | null>(null);
 
-  // el lavado básico es el piso obligatorio: nunca se elige el tipo de
-  // servicio de entrada. Si algún lavador candidato ofrece Encerado/Premium,
-  // esa opción aparece recién en el paso de elegir lavadores.
-  const basicoId = tiposServicio.find((t) => t.nombre.toLowerCase().startsWith("basic"))?.id ?? tiposServicio[0]?.id ?? "";
-
   // datos
   const [tipoVehiculo, setTipoVehiculo] = useState<TipoVehiculo>("auto");
-  const [tipoServicioId, setTipoServicioId] = useState(basicoId);
+  const [tipoServicioId, setTipoServicioId] = useState(tiposServicio[0]?.id ?? "");
   const [calle, setCalle] = useState("");
   const [zonaId, setZonaId] = useState(zonasDisponibles[0]?.id ?? "");
   const [loteBarrio, setLoteBarrio] = useState("");
@@ -243,10 +245,10 @@ export function PedirLavadoWizard({
       mapa[r.tipo_servicio_id] = r.precio;
       preciosPorLavador.set(r.lavador_id, mapa);
     }
-    const idsConBasico = [...preciosPorLavador.entries()]
-      .filter(([, precios]) => precios[basicoId] != null)
+    const idsConServicio = [...preciosPorLavador.entries()]
+      .filter(([, precios]) => precios[tipoServicioId] != null)
       .map(([id]) => id);
-    if (idsConBasico.length === 0) {
+    if (idsConServicio.length === 0) {
       setCandidatos([]);
       setPaso("sin_candidatos");
       return;
@@ -256,7 +258,7 @@ export function PedirLavadoWizard({
       .from("lavador_disponibilidad")
       .select("lavador_id, hora_inicio, hora_fin")
       .eq("dia_semana", diaSemana)
-      .in("lavador_id", idsConBasico);
+      .in("lavador_id", idsConServicio);
     const idsDisponibles = (dispRows ?? [])
       .filter((d) => d.hora_inicio <= horaStr && d.hora_fin >= horaStr)
       .map((d) => d.lavador_id);
@@ -321,7 +323,6 @@ export function PedirLavadoWizard({
 
     setRecargosVehiculo(Object.fromEntries((recargos ?? []).map((r) => [r.tipo_vehiculo, r.recargo_pct])));
     setCandidatos(lista);
-    setTipoServicioId(basicoId);
     setSeleccionados(new Set());
     setFiltroPrecioMin(null);
     setFiltroPrecioMax(null);
@@ -513,6 +514,38 @@ export function PedirLavadoWizard({
           </div>
 
           <div className="space-y-1.5">
+            <label className="text-sm font-medium text-foreground">Tipo de lavado</label>
+            <div className="space-y-2">
+              {tiposServicio.map((t) => {
+                const Icono = iconoServicio(t.nombre);
+                const seleccionado = tipoServicioId === t.id;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setTipoServicioId(t.id)}
+                    className={`w-full flex items-start gap-3 border-2 rounded-2xl p-3.5 text-left transition-all duration-200 active:scale-95 ${
+                      seleccionado ? "border-accent bg-accent/10" : "border-border"
+                    }`}
+                  >
+                    <div
+                      className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 ${
+                        seleccionado ? "bg-accent/20" : "bg-surface-raised"
+                      }`}
+                    >
+                      <Icono size={16} strokeWidth={1.75} className={seleccionado ? "text-accent" : "text-foreground-muted"} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-foreground">{t.nombre}</p>
+                      {t.descripcion && <p className="text-xs text-foreground-muted mt-0.5">{t.descripcion}</p>}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
             <label className="text-sm font-medium text-foreground">
               Modelo de vehículo <span className="text-accent">*</span>
             </label>
@@ -524,17 +557,6 @@ export function PedirLavadoWizard({
               className="w-full bg-surface-raised border border-border rounded-xl px-3.5 py-2.5 text-foreground placeholder:text-foreground-muted transition-all duration-200 focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/25"
             />
             <p className="text-xs text-foreground-muted">Así el lavador lo reconoce al llegar.</p>
-          </div>
-
-          <div className="rounded-2xl px-3.5 py-3 bg-accent/10 border border-accent/25 flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center flex-shrink-0">
-              <Droplets size={16} strokeWidth={2} className="text-accent" />
-            </div>
-            <p className="text-xs text-foreground-muted">
-              El <span className="text-foreground font-medium">Básico</span> incluye lavado exterior
-              completo — carrocería, vidrios y llantas. Si algún lavador ofrece Encerado o Premium,
-              lo vas a poder sumar más adelante.
-            </p>
           </div>
 
           <div className="space-y-1.5">
@@ -741,9 +763,9 @@ export function PedirLavadoWizard({
 
           <div className="flex gap-2 flex-wrap">
             {tiposServicio
-              .filter((t) => t.id === basicoId || candidatos.some((c) => c.precios[t.id] != null))
+              .filter((t) => t.id === tipoServicioId || candidatos.some((c) => c.precios[t.id] != null))
               .map((t) => {
-                const Icono = t.id === basicoId ? Droplets : t.nombre.toLowerCase().includes("premium") ? Gem : Sparkles;
+                const Icono = iconoServicio(t.nombre);
                 return (
                   <button
                     key={t.id}
@@ -847,7 +869,7 @@ export function PedirLavadoWizard({
                           lavados
                         </p>
                       </div>
-                      <p className="text-sm font-semibold text-accent flex-shrink-0">
+                      <p className="text-sm font-semibold text-foreground flex-shrink-0">
                         {precioFinal != null ? `$${precioFinal.toLocaleString("es-AR")}` : "—"}
                       </p>
                     </label>
@@ -921,7 +943,7 @@ export function PedirLavadoWizard({
                 <EstrellasRating puntaje={ofertaLavador.rating_promedio} size={12} />
                 {ofertaLavador.rating_promedio.toFixed(1)} ({ofertaLavador.cantidad_calificaciones})
               </p>
-              <p className="font-semibold text-accent mt-1">${precioFinal?.toLocaleString("es-AR")}</p>
+              <p className="font-semibold text-foreground mt-1">${precioFinal?.toLocaleString("es-AR")}</p>
               {distanciaLavadorKm != null && (
                 <p className="text-xs text-foreground-muted">A {distanciaLavadorKm.toFixed(1)} km tuyo</p>
               )}

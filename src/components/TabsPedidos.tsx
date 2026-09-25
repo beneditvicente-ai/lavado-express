@@ -225,7 +225,7 @@ export function TabsPedidos({
                     </span>
                   </div>
                 </div>
-                <p className="font-bold text-lg text-accent flex-shrink-0">
+                <p className="font-bold text-lg text-foreground flex-shrink-0">
                   ${p.precio_total.toLocaleString("es-AR")}
                 </p>
               </div>

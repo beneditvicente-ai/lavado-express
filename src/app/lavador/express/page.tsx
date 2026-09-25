@@ -10,14 +10,24 @@ export default async function ExpressLavadorPage() {
   const usuario = await requireRol("lavador");
   const supabase = await createClient();
 
+  const { data: serviciosPropios } = await supabase
+    .from("lavador_servicios")
+    .select("tipo_servicio_id")
+    .eq("lavador_id", usuario.id)
+    .eq("activo", true);
+  const idsServiciosPropios = (serviciosPropios ?? []).map((s) => s.tipo_servicio_id);
+
   const [{ data: pedidos }, { data: estadoExpress }] = await Promise.all([
-    supabase
-      .from("pedidos")
-      .select("id, direccion_texto, lat, lng, tipo_vehiculo, detalles_vehiculo, fecha_limite_express, creado_en")
-      .eq("estado", "buscando")
-      .eq("tipo", "express")
-      .is("lavador_id", null)
-      .order("creado_en", { ascending: false }),
+    idsServiciosPropios.length
+      ? supabase
+          .from("pedidos")
+          .select("id, direccion_texto, lat, lng, tipo_vehiculo, detalles_vehiculo, fecha_limite_express, creado_en")
+          .eq("estado", "buscando")
+          .eq("tipo", "express")
+          .is("lavador_id", null)
+          .in("tipo_servicio_id", idsServiciosPropios)
+          .order("creado_en", { ascending: false })
+      : Promise.resolve({ data: [] as never[] }),
     supabase
       .from("lavador_estado_express")
       .select("disponible_ahora, lat, lng")
@@ -51,6 +61,7 @@ export default async function ExpressLavadorPage() {
         lavadorId={usuario.id}
         pedidosIniciales={pedidos ?? []}
         posicionInicial={posicionInicial}
+        serviciosOfrecidos={idsServiciosPropios}
       />
     </main>
   );

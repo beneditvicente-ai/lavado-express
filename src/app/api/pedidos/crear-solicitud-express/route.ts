@@ -75,7 +75,7 @@ export async function POST(req: Request) {
   });
 
   try {
-    const lavadorIds = await lavadorIdsPorZona(zona_id);
+    const lavadorIds = await lavadorIdsPorZona(zona_id, tipo_servicio_id);
     const { data: zona } = await admin.from("zonas_disponibles").select("nombre").eq("id", zona_id).single();
     await notificarLavadores(lavadorIds, {
       titulo: "Nuevo pedido en tu zona",

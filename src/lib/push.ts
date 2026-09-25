@@ -16,16 +16,28 @@ function configurarVapid() {
 }
 
 // Lavadores activos cuya zona de cobertura (lavador_zonas) incluye la
-// zona pasada -- son los candidatos a recibir el pedido nuevo.
-export async function lavadorIdsPorZona(zonaId: string): Promise<string[]> {
+// zona pasada Y que ofrecen el tipo de servicio pedido -- son los
+// candidatos reales a recibir el pedido nuevo (si no ofrecen ese
+// servicio, no tiene sentido avisarles).
+export async function lavadorIdsPorZona(zonaId: string, tipoServicioId: string): Promise<string[]> {
   const admin = createAdminClient();
-  const { data } = await admin
-    .from("lavador_zonas")
-    .select("lavador_id, lavadores!inner(activo)")
-    .eq("zona_id", zonaId)
-    .eq("lavadores.activo", true);
+  const [{ data: porZona }, { data: porServicio }] = await Promise.all([
+    admin
+      .from("lavador_zonas")
+      .select("lavador_id, lavadores!inner(activo)")
+      .eq("zona_id", zonaId)
+      .eq("lavadores.activo", true),
+    admin
+      .from("lavador_servicios")
+      .select("lavador_id")
+      .eq("tipo_servicio_id", tipoServicioId)
+      .eq("activo", true),
+  ]);
 
-  return [...new Set((data ?? []).map((r: { lavador_id: string }) => r.lavador_id))];
+  const idsPorServicio = new Set((porServicio ?? []).map((r: { lavador_id: string }) => r.lavador_id));
+  return [...new Set((porZona ?? []).map((r: { lavador_id: string }) => r.lavador_id))].filter((id) =>
+    idsPorServicio.has(id)
+  );
 }
 
 // Manda un push a cada suscripción activa de los lavadores dados. Si una
