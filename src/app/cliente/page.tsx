@@ -28,7 +28,7 @@ export default async function ClientePage() {
   return (
     <main className="flex-1 max-w-2xl mx-auto w-full p-6 space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Hola, {usuario.nombre}</h1>
+        <h1 className="font-display text-2xl font-bold tracking-tight">Hola, {usuario.nombre}</h1>
         <LogoutButton />
       </div>
 

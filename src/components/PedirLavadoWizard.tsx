@@ -492,7 +492,7 @@ export function PedirLavadoWizard({
     <div className="border border-border rounded-2xl p-4 space-y-4 bg-surface">
       {paso === "datos" && (
         <form onSubmit={irAModo} className="space-y-4">
-          <h2 className="font-semibold text-lg text-foreground">¿Qué necesitás lavar?</h2>
+          <h2 className="font-display font-bold text-lg text-foreground tracking-tight">¿Qué necesitás lavar?</h2>
 
           <div className="space-y-1.5">
             <label className="text-sm font-medium text-foreground">Tipo de vehículo</label>
@@ -516,30 +516,31 @@ export function PedirLavadoWizard({
 
           <div className="space-y-1.5">
             <label className="text-sm font-medium text-foreground">Tipo de lavado</label>
-            <div className="space-y-2">
+            <div className="rounded-2xl border border-border overflow-hidden divide-y divide-border">
               {tiposServicio.map((t) => {
-                const Icono = iconoServicio(t.nombre);
                 const seleccionado = tipoServicioId === t.id;
                 return (
                   <button
                     key={t.id}
                     type="button"
                     onClick={() => setTipoServicioId(t.id)}
-                    className={`w-full flex items-start gap-3 border-2 rounded-2xl p-3.5 text-left transition-all duration-200 active:scale-95 ${
-                      seleccionado ? "border-accent bg-accent/10" : "border-border"
+                    className={`w-full flex items-center justify-between gap-3 p-3.5 text-left transition-colors duration-200 active:scale-[0.98] ${
+                      seleccionado ? "bg-accent/[0.08]" : "bg-surface"
                     }`}
                   >
-                    <div
-                      className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 ${
-                        seleccionado ? "bg-accent/20" : "bg-surface-raised"
+                    <div className="min-w-0">
+                      <p className={`font-display text-sm font-semibold ${seleccionado ? "text-accent" : "text-foreground"}`}>
+                        {t.nombre}
+                      </p>
+                      {t.descripcion && <p className="text-xs text-foreground-muted mt-0.5 leading-relaxed">{t.descripcion}</p>}
+                    </div>
+                    <span
+                      className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors duration-200 ${
+                        seleccionado ? "border-accent" : "border-border"
                       }`}
                     >
-                      <Icono size={16} strokeWidth={1.75} className={seleccionado ? "text-accent" : "text-foreground-muted"} />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-foreground">{t.nombre}</p>
-                      {t.descripcion && <p className="text-xs text-foreground-muted mt-0.5">{t.descripcion}</p>}
-                    </div>
+                      {seleccionado && <span className="w-2.5 h-2.5 rounded-full bg-accent" />}
+                    </span>
                   </button>
                 );
               })}
@@ -611,7 +612,7 @@ export function PedirLavadoWizard({
 
       {paso === "modo" && (
         <div className="space-y-4">
-          <h2 className="font-semibold text-lg text-foreground">¿Cuándo lo necesitás?</h2>
+          <h2 className="font-display font-bold text-lg text-foreground tracking-tight">¿Cuándo lo necesitás?</h2>
 
           <div className="flex gap-2">
             <button
@@ -699,7 +700,7 @@ export function PedirLavadoWizard({
 
       {paso === "confirmar_ubicacion" && ubicacionMapa && (
         <div className="space-y-3">
-          <h2 className="font-semibold text-lg text-foreground">Confirmá dónde está el auto</h2>
+          <h2 className="font-display font-bold text-lg text-foreground tracking-tight">Confirmá dónde está el auto</h2>
           <p className="text-sm text-foreground-muted">
             Movés el pin si no es exacto — esto es lo que va a ver el lavador.
           </p>
@@ -757,7 +758,7 @@ export function PedirLavadoWizard({
 
       {paso === "elegir_lavadores" && (
         <div className="space-y-4">
-          <h2 className="font-semibold text-lg text-foreground">Elegí a quién invitar</h2>
+          <h2 className="font-display font-bold text-lg text-foreground tracking-tight">Elegí a quién invitar</h2>
           <p className="text-sm text-foreground-muted">
             Podés invitar a varios — el primero que confirme se queda con el turno.
           </p>
@@ -926,7 +927,7 @@ export function PedirLavadoWizard({
 
       {paso === "lavador_encontrado" && ofertaLavador && (
         <div className="space-y-4">
-          <h2 className="font-semibold text-lg text-foreground">¡Un lavador aceptó tu pedido!</h2>
+          <h2 className="font-display font-bold text-lg text-foreground tracking-tight">¡Un lavador aceptó tu pedido!</h2>
 
           <div className="border border-border rounded-2xl p-4 flex gap-4 items-center bg-surface-raised">
             {ofertaLavador.fotoUrl ? (
