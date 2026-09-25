@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 
 type Solicitud = {
@@ -69,12 +70,13 @@ export function SolicitudesAdminList({ solicitudes }: { solicitudes: Solicitud[]
           {s.fotos.length > 0 && (
             <div className="flex flex-wrap gap-2 pt-1">
               {s.fotos.map((f, i) => (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
+                <Image
                   key={i}
                   src={f.url}
                   alt={f.tipo}
                   title={f.tipo}
+                  width={56}
+                  height={56}
                   className="w-14 h-14 object-cover rounded-md border"
                 />
               ))}

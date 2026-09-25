@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 
 type TipoFoto = "perfil" | "equipo" | "trabajo";
@@ -86,11 +87,12 @@ export function FotosForm({ lavadorId, fotosActuales }: { lavadorId: string; fot
 
             <div className="flex flex-wrap gap-2">
               {fotos.map((f) => (
-                // eslint-disable-next-line @next/next/no-img-element
                 <div key={f.id} className="relative">
-                  <img
+                  <Image
                     src={urlPublica(f.storage_path)}
                     alt={cat.etiqueta}
+                    width={80}
+                    height={80}
                     className="w-20 h-20 object-cover rounded-md border"
                   />
                   <button

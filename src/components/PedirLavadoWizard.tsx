@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
+import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 import { distanciaKm } from "@/lib/distancia";
 import { Droplets, Zap, Calendar, MapPin, Gem, Sparkles } from "lucide-react";
@@ -852,10 +853,11 @@ export function PedirLavadoWizard({
                         }
                       />
                       {c.fotoUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
+                        <Image
                           src={c.fotoUrl}
                           alt={c.nombre}
+                          width={40}
+                          height={40}
                           className="w-10 h-10 rounded-full object-cover flex-shrink-0"
                         />
                       ) : (
@@ -928,10 +930,11 @@ export function PedirLavadoWizard({
 
           <div className="border border-border rounded-2xl p-4 flex gap-4 items-center bg-surface-raised">
             {ofertaLavador.fotoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
+              <Image
                 src={ofertaLavador.fotoUrl}
                 alt={ofertaLavador.nombre}
+                width={64}
+                height={64}
                 className="w-16 h-16 rounded-full object-cover flex-shrink-0"
               />
             ) : (

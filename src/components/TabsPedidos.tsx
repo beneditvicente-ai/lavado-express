@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { AccionesLavadorTurno } from "@/components/AccionesLavadorTurno";
 import { MapPin, Car, Clock } from "lucide-react";
 
@@ -270,11 +271,12 @@ export function TabsPedidos({
               {p.fotosResultado && p.fotosResultado.length > 0 && (
                 <div className="flex flex-wrap gap-2">
                   {p.fotosResultado.map((url, i) => (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
+                    <Image
                       key={i}
                       src={url}
                       alt="Resultado del lavado"
+                      width={64}
+                      height={64}
                       className="w-16 h-16 object-cover rounded-xl border border-border"
                     />
                   ))}

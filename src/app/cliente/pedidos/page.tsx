@@ -14,7 +14,8 @@ export default async function PedidosClientePage() {
     )
     .eq("cliente_id", usuario.id)
     .eq("oculto_cliente", false)
-    .order("creado_en", { ascending: false });
+    .order("creado_en", { ascending: false })
+    .limit(50);
 
   const lavadorIds = [...new Set((pedidos ?? []).map((p) => p.lavador_id).filter(Boolean))];
   const pedidoIds = (pedidos ?? []).map((p) => p.id);

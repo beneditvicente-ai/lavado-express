@@ -28,7 +28,8 @@ export default async function PedidosLavadorPage() {
       )
       .eq("lavador_id", usuario.id)
       .eq("oculto_lavador", false)
-      .order("creado_en", { ascending: false }),
+      .order("creado_en", { ascending: false })
+      .limit(50),
     supabase
       .from("lavador_bloqueos")
       .select("id, fecha, hora_inicio, hora_fin, motivo")

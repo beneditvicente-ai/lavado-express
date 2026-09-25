@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import Image from "next/image";
 import { Star } from "lucide-react";
 import { EstrellasRating } from "@/components/EstrellasRating";
 
@@ -46,10 +47,12 @@ export default async function PerfilPublicoLavadorPage({
     <main className="flex-1 max-w-2xl mx-auto w-full p-6 space-y-6">
       <div className="flex items-center gap-4">
         {fotoPerfil ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
+          <Image
             src={urlFoto(fotoPerfil.storage_path)}
             alt={lavador.nombre}
+            width={80}
+            height={80}
+            priority
             className="w-20 h-20 rounded-full object-cover"
           />
         ) : (
@@ -79,11 +82,12 @@ export default async function PerfilPublicoLavadorPage({
           <h2 className="font-medium mb-2">Fotos del equipo</h2>
           <div className="flex flex-wrap gap-2">
             {fotosEquipo.map((f, i) => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
+              <Image
                 key={i}
                 src={urlFoto(f.storage_path)}
                 alt="Equipo"
+                width={80}
+                height={80}
                 className="w-20 h-20 object-cover rounded-md border"
               />
             ))}
@@ -96,11 +100,12 @@ export default async function PerfilPublicoLavadorPage({
           <h2 className="font-medium mb-2">Trabajos realizados</h2>
           <div className="flex flex-wrap gap-2">
             {fotosTrabajo.map((f, i) => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
+              <Image
                 key={i}
                 src={urlFoto(f.storage_path)}
                 alt="Trabajo realizado"
+                width={80}
+                height={80}
                 className="w-20 h-20 object-cover rounded-md border"
               />
             ))}
