@@ -70,6 +70,21 @@ export default async function ClientePage() {
           <p className="text-sm text-foreground-muted">Sumate como lavador y empezá a generar ingresos.</p>
         </Link>
       )}
+
+      <footer className="pt-4 border-t border-border text-center space-y-1.5">
+        <p className="text-xs text-foreground-muted">
+          Tus datos y pagos están protegidos. Procesamos los cobros a través de Mercado Pago.
+        </p>
+        <p className="text-xs text-foreground-muted">
+          <Link href="/privacidad" className="underline hover:text-foreground transition-colors duration-200">
+            Política de privacidad
+          </Link>
+          {" · "}
+          <Link href="/terminos" className="underline hover:text-foreground transition-colors duration-200">
+            Términos y condiciones
+          </Link>
+        </p>
+      </footer>
     </main>
   );
 }

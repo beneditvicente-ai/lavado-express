@@ -7,9 +7,9 @@
   --border: #2e2e2e;
   --foreground: #f5f5f4;
   --foreground-muted: #a3a3a3;
-  --accent: #f5b83d;
-  --accent-strong: #eea825;
-  --accent-foreground: #1c1204;
+  --accent: #fbc419;
+  --accent-strong: #e8ae00;
+  --accent-foreground: #171200;
 }
 
 @theme inline {

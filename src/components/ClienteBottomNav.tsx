@@ -23,7 +23,7 @@ export function ClienteBottomNav() {
               key={href}
               href={href}
               className={`flex flex-col items-center gap-0.5 px-4 py-2 rounded-2xl text-xs transition-colors duration-200 active:scale-95 ${
-                activo ? "bg-accent text-accent-foreground font-medium" : "text-foreground-muted"
+                activo ? "text-accent font-semibold" : "text-foreground-muted"
               }`}
             >
               <Icon size={20} strokeWidth={activo ? 2.25 : 1.75} />

@@ -181,6 +181,10 @@ export function PedirLavadoWizard({
 
   function irAModo(e: React.FormEvent) {
     e.preventDefault();
+    if (!detallesVehiculo.trim()) {
+      setError("Contanos el modelo de tu vehículo.");
+      return;
+    }
     if (!calle.trim() || !zonaId) {
       setError("Completá dirección y zona.");
       return;
@@ -509,8 +513,11 @@ export function PedirLavadoWizard({
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-sm font-medium text-foreground">Detalles del vehículo</label>
+            <label className="text-sm font-medium text-foreground">
+              Modelo de vehículo <span className="text-accent">*</span>
+            </label>
             <input
+              required
               value={detallesVehiculo}
               onChange={(e) => setDetallesVehiculo(e.target.value)}
               placeholder="ej: Corolla gris, patente AB123CD"
