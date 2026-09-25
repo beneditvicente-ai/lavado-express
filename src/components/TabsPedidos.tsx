@@ -47,6 +47,12 @@ function tiempoRestante(fechaLimite: string, ahora: number) {
   return `Te quedan ${minutos}m`;
 }
 
+function urlGoogleMaps(p: PedidoResumen) {
+  const destino =
+    p.lat != null && p.lng != null ? `${p.lat},${p.lng}` : encodeURIComponent(p.direccionTexto ?? "");
+  return `https://www.google.com/maps/dir/?api=1&destination=${destino}`;
+}
+
 const ESTILO_ESTADO: Record<string, string> = {
   buscando: "bg-surface-raised text-foreground-muted",
   pendiente_pago: "bg-accent/15 text-accent",
@@ -230,19 +236,15 @@ export function TabsPedidos({
                   <p className="flex items-center gap-1.5">
                     <MapPin size={15} className="flex-shrink-0 text-foreground-muted" />
                     <span className="truncate">{p.direccionTexto}</span>
-                    {p.lat && p.lng ? (
-                      <>
-                        <span>·</span>
-                        <a
-                          href={`https://www.openstreetmap.org/?mlat=${p.lat}&mlon=${p.lng}#map=16/${p.lat}/${p.lng}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-accent underline flex-shrink-0"
-                        >
-                          Ver en el mapa
-                        </a>
-                      </>
-                    ) : null}
+                    <span>·</span>
+                    <a
+                      href={urlGoogleMaps(p)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-accent underline flex-shrink-0"
+                    >
+                      Ver en el mapa
+                    </a>
                   </p>
                 )}
                 {p.detallesVehiculo && (
