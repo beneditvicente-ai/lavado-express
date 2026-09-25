@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { AccionesLavadorTurno } from "@/components/AccionesLavadorTurno";
+import { WhatsAppButton } from "@/components/WhatsAppButton";
 import { MapPin, Car, Clock } from "lucide-react";
 
 export type PedidoResumen = {
@@ -14,6 +15,8 @@ export type PedidoResumen = {
   fecha_hora_turno: string | null;
   creado_en: string;
   contraparteNombre: string;
+  telefonoContraparte?: string | null;
+  tipoServicioNombre?: string | null;
   direccionTexto?: string;
   detallesVehiculo?: string | null;
   lat?: number;
@@ -23,6 +26,25 @@ export type PedidoResumen = {
 };
 
 const ESTADOS_ACTIVOS = ["buscando", "pendiente_pago", "confirmado", "en_camino", "en_curso"];
+// una vez pagado el turno, cliente y lavador ya se pueden contactar por
+// WhatsApp -- antes de esto el telefono ni siquiera se pide a la base
+// (ver get_telefono_contraparte, migracion 0019).
+const ESTADOS_POST_PAGO = ["confirmado", "en_camino", "en_curso", "completado", "calificado"];
+
+function mensajeWhatsapp(p: PedidoResumen, rol: "cliente" | "lavador") {
+  const servicio = p.tipoServicioNombre ?? "lavado";
+  const cuando = p.fecha_hora_turno
+    ? new Date(p.fecha_hora_turno).toLocaleString("es-AR", {
+        weekday: "short",
+        day: "numeric",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : "ahora (turno express)";
+  const saludo = rol === "cliente" ? "Hola! Soy el cliente de tu" : "Hola! Soy el lavador de tu";
+  return `${saludo} turno de ${servicio}.\nDirección: ${p.direccionTexto ?? "—"}\nHorario: ${cuando}\n¡Nos vemos!`;
+}
 const ESTADOS_CANCELABLES = ["confirmado", "en_camino"];
 
 const ETIQUETAS_ESTADO: Record<string, string> = {
@@ -267,6 +289,10 @@ export function TabsPedidos({
                   </p>
                 )}
               </div>
+
+              {ESTADOS_POST_PAGO.includes(p.estado) && p.telefonoContraparte && (
+                <WhatsAppButton telefono={p.telefonoContraparte} mensaje={mensajeWhatsapp(p, rol)} />
+              )}
 
               {p.fotosResultado && p.fotosResultado.length > 0 && (
                 <div className="flex flex-wrap gap-2">
