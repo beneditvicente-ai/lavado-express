@@ -47,6 +47,20 @@ function tiempoRestante(fechaLimite: string, ahora: number) {
   return `Te quedan ${minutos}m`;
 }
 
+const ESTILO_ESTADO: Record<string, string> = {
+  buscando: "bg-surface-raised text-foreground-muted",
+  pendiente_pago: "bg-accent/15 text-accent",
+  confirmado: "bg-emerald-500/15 text-emerald-400",
+  en_camino: "bg-emerald-500/15 text-emerald-400",
+  en_curso: "bg-emerald-500/15 text-emerald-400",
+  completado: "bg-surface-raised text-foreground-muted",
+  calificado: "bg-surface-raised text-foreground-muted",
+  sin_disponibilidad: "bg-red-500/15 text-red-400",
+  cancelado_sin_cargo: "bg-red-500/15 text-red-400",
+  cancelado_con_cargo: "bg-red-500/15 text-red-400",
+  cancelado_lavador: "bg-red-500/15 text-red-400",
+};
+
 export function TabsPedidos({
   pedidos,
   etiquetaContraparte,
@@ -150,90 +164,139 @@ export function TabsPedidos({
   const lista = tab === "activos" ? activos : historial;
 
   return (
-    <div className="space-y-3">
-      <div className="flex border-b">
+    <div className="space-y-4">
+      <div className="flex gap-1 bg-surface border border-border rounded-full p-1 w-fit">
         <button
           onClick={() => setTab("activos")}
-          className={`px-4 py-2 text-sm font-medium border-b-2 ${
-            tab === "activos" ? "border-neutral-900" : "border-transparent text-neutral-500"
+          className={`px-4 py-1.5 text-sm font-medium rounded-full transition-all duration-200 active:scale-95 ${
+            tab === "activos" ? "bg-surface-raised text-accent" : "text-foreground-muted"
           }`}
         >
           Activos ({activos.length})
         </button>
         <button
           onClick={() => setTab("historial")}
-          className={`px-4 py-2 text-sm font-medium border-b-2 ${
-            tab === "historial" ? "border-neutral-900" : "border-transparent text-neutral-500"
+          className={`px-4 py-1.5 text-sm font-medium rounded-full transition-all duration-200 active:scale-95 ${
+            tab === "historial" ? "bg-surface-raised text-accent" : "text-foreground-muted"
           }`}
         >
           Historial ({historial.length})
         </button>
       </div>
 
-      {mensaje && <p className="text-sm text-neutral-700 bg-neutral-50 border rounded-md p-2">{mensaje}</p>}
+      {mensaje && (
+        <p className="text-sm text-foreground bg-surface border border-border rounded-2xl p-3">{mensaje}</p>
+      )}
 
       {lista.length === 0 ? (
-        <p className="text-sm text-neutral-500">No hay pedidos acá todavía.</p>
+        <div className="text-center py-10 space-y-1.5">
+          <p className="text-sm font-medium text-foreground">
+            {tab === "activos" ? "No tenés pedidos activos" : "Todavía no hay historial"}
+          </p>
+          <p className="text-xs text-foreground-muted">
+            {tab === "activos" ? "Cuando pidas un lavado, lo vas a ver acá." : "Tus lavados completados van a aparecer acá."}
+          </p>
+        </div>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-3">
           {lista.map((p) => (
-            <div key={p.id} className="border rounded-md p-3">
-              <div className="flex justify-between items-start">
-                <div>
-                  <p className="font-medium text-sm">
+            <div key={p.id} className="border border-border rounded-2xl p-4 bg-surface space-y-2.5">
+              <div className="flex justify-between items-start gap-3">
+                <div className="min-w-0">
+                  <p className="font-semibold text-base text-foreground truncate">
                     {etiquetaContraparte}: {p.contraparteNombre}
                   </p>
-                  <p className="text-xs text-neutral-500">
-                    {p.tipo === "express" ? "Express" : "Programado"} ·{" "}
-                    {ETIQUETAS_ESTADO[p.estado] ?? p.estado}
-                  </p>
-                  {p.fecha_hora_turno && (
-                    <p className="text-xs text-neutral-500">
-                      {new Date(p.fecha_hora_turno).toLocaleString("es-AR")}
-                    </p>
-                  )}
-                  {p.direccionTexto && (
-                    <p className="text-xs text-neutral-500 flex items-center gap-1">
-                      <MapPin size={12} className="flex-shrink-0" />
-                      {p.direccionTexto}
-                      {p.lat && p.lng ? (
-                        <>
-                          ·{" "}
-                          <a
-                            href={`https://www.openstreetmap.org/?mlat=${p.lat}&mlon=${p.lng}#map=16/${p.lat}/${p.lng}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="underline"
-                          >
-                            Ver en el mapa
-                          </a>
-                        </>
-                      ) : null}
-                    </p>
-                  )}
-                  {p.detallesVehiculo && (
-                    <p className="text-xs text-neutral-500 flex items-center gap-1">
-                      <Car size={12} className="flex-shrink-0" />
-                      {p.detallesVehiculo}
-                    </p>
-                  )}
-                  {p.fechaLimiteExpress && ESTADOS_ACTIVOS.includes(p.estado) && (
-                    <p
-                      className={`text-xs font-medium mt-0.5 flex items-center gap-1 ${
-                        new Date(p.fechaLimiteExpress).getTime() - ahora <= 0
-                          ? "text-red-600"
-                          : "text-amber-600"
+                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                    <span className="text-xs text-foreground-muted">
+                      {p.tipo === "express" ? "Express" : "Programado"}
+                    </span>
+                    <span
+                      className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                        ESTILO_ESTADO[p.estado] ?? "bg-surface-raised text-foreground-muted"
                       }`}
                     >
-                      <Clock size={12} className="flex-shrink-0" />
-                      {tiempoRestante(p.fechaLimiteExpress, ahora)}
-                    </p>
-                  )}
+                      {ETIQUETAS_ESTADO[p.estado] ?? p.estado}
+                    </span>
+                  </div>
+                </div>
+                <p className="font-bold text-lg text-accent flex-shrink-0">
+                  ${p.precio_total.toLocaleString("es-AR")}
+                </p>
+              </div>
+
+              <div className="space-y-1.5 text-sm text-foreground-muted">
+                {p.fecha_hora_turno && <p>{new Date(p.fecha_hora_turno).toLocaleString("es-AR")}</p>}
+                {p.direccionTexto && (
+                  <p className="flex items-center gap-1.5">
+                    <MapPin size={15} className="flex-shrink-0 text-foreground-muted" />
+                    <span className="truncate">{p.direccionTexto}</span>
+                    {p.lat && p.lng ? (
+                      <>
+                        <span>·</span>
+                        <a
+                          href={`https://www.openstreetmap.org/?mlat=${p.lat}&mlon=${p.lng}#map=16/${p.lat}/${p.lng}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-accent underline flex-shrink-0"
+                        >
+                          Ver en el mapa
+                        </a>
+                      </>
+                    ) : null}
+                  </p>
+                )}
+                {p.detallesVehiculo && (
+                  <p className="flex items-center gap-1.5">
+                    <Car size={15} className="flex-shrink-0 text-foreground-muted" />
+                    {p.detallesVehiculo}
+                  </p>
+                )}
+                {p.fechaLimiteExpress && ESTADOS_ACTIVOS.includes(p.estado) && (
+                  <p
+                    className={`inline-flex items-center gap-1.5 font-medium px-2 py-1 rounded-full text-xs ${
+                      new Date(p.fechaLimiteExpress).getTime() - ahora <= 0
+                        ? "bg-red-500/15 text-red-400"
+                        : "bg-accent/15 text-accent"
+                    }`}
+                  >
+                    <Clock size={13} className="flex-shrink-0" />
+                    {tiempoRestante(p.fechaLimiteExpress, ahora)}
+                  </p>
+                )}
+              </div>
+
+              {p.fotosResultado && p.fotosResultado.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {p.fotosResultado.map((url, i) => (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      key={i}
+                      src={url}
+                      alt="Resultado del lavado"
+                      className="w-16 h-16 object-cover rounded-xl border border-border"
+                    />
+                  ))}
+                </div>
+              )}
+
+              {rol === "lavador" && usuarioId && ["confirmado", "en_curso"].includes(p.estado) && (
+                <AccionesLavadorTurno
+                  pedidoId={p.id}
+                  lavadorId={usuarioId}
+                  estado={p.estado}
+                  fotosIniciales={p.fotosResultado ?? []}
+                />
+              )}
+
+              {(ESTADOS_CANCELABLES.includes(p.estado) ||
+                (rol === "lavador" && p.estado === "pendiente_pago") ||
+                !ESTADOS_ACTIVOS.includes(p.estado)) && (
+                <div className="flex gap-2 flex-wrap pt-1">
                   {ESTADOS_CANCELABLES.includes(p.estado) && (
                     <button
                       onClick={() => cancelar(p.id)}
                       disabled={cancelando === p.id}
-                      className="text-xs text-red-600 underline mt-1 disabled:opacity-50"
+                      className="text-xs font-medium text-red-400 border border-red-500/30 rounded-full px-3 py-1.5 transition-all duration-200 active:scale-95 disabled:opacity-50"
                     >
                       {cancelando === p.id ? "Cancelando..." : "Cancelar turno"}
                     </button>
@@ -242,44 +305,22 @@ export function TabsPedidos({
                     <button
                       onClick={() => cancelarAceptacion(p.id)}
                       disabled={cancelandoAceptacion === p.id}
-                      className="text-xs text-red-600 underline mt-1 disabled:opacity-50"
+                      className="text-xs font-medium text-red-400 border border-red-500/30 rounded-full px-3 py-1.5 transition-all duration-200 active:scale-95 disabled:opacity-50"
                     >
                       {cancelandoAceptacion === p.id ? "Cancelando..." : "Cancelar (sin cargo, todavía no te pagaron)"}
                     </button>
-                  )}
-                  {rol === "lavador" && usuarioId && ["confirmado", "en_curso"].includes(p.estado) && (
-                    <AccionesLavadorTurno
-                      pedidoId={p.id}
-                      lavadorId={usuarioId}
-                      estado={p.estado}
-                      fotosIniciales={p.fotosResultado ?? []}
-                    />
-                  )}
-                  {p.fotosResultado && p.fotosResultado.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {p.fotosResultado.map((url, i) => (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          key={i}
-                          src={url}
-                          alt="Resultado del lavado"
-                          className="w-12 h-12 object-cover rounded-md border"
-                        />
-                      ))}
-                    </div>
                   )}
                   {!ESTADOS_ACTIVOS.includes(p.estado) && (
                     <button
                       onClick={() => eliminar(p.id)}
                       disabled={eliminando === p.id}
-                      className="text-xs text-neutral-400 underline mt-1 disabled:opacity-50 block"
+                      className="text-xs font-medium text-foreground-muted border border-border rounded-full px-3 py-1.5 transition-all duration-200 active:scale-95 disabled:opacity-50"
                     >
                       {eliminando === p.id ? "Eliminando..." : "Eliminar de mi historial"}
                     </button>
                   )}
                 </div>
-                <p className="font-medium text-sm">${p.precio_total.toLocaleString("es-AR")}</p>
-              </div>
+              )}
             </div>
           ))}
         </div>

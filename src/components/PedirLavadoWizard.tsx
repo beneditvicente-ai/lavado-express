@@ -526,11 +526,14 @@ export function PedirLavadoWizard({
             <p className="text-xs text-foreground-muted">Así el lavador lo reconoce al llegar.</p>
           </div>
 
-          <div className="rounded-2xl px-3.5 py-3 bg-surface-raised border border-border flex items-center gap-2.5">
-            <Droplets size={18} strokeWidth={1.75} className="text-accent flex-shrink-0" />
+          <div className="rounded-2xl px-3.5 py-3 bg-accent/10 border border-accent/25 flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center flex-shrink-0">
+              <Droplets size={16} strokeWidth={2} className="text-accent" />
+            </div>
             <p className="text-xs text-foreground-muted">
-              El lavado incluye el servicio Básico. Si alguno de los lavadores disponibles ofrece
-              Encerado o Premium, vas a poder elegirlo más adelante.
+              El <span className="text-foreground font-medium">Básico</span> incluye lavado exterior
+              completo — carrocería, vidrios y llantas. Si algún lavador ofrece Encerado o Premium,
+              lo vas a poder sumar más adelante.
             </p>
           </div>
 
