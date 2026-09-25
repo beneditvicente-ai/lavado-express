@@ -35,10 +35,11 @@ export default async function ClientePage() {
       {activos ? (
         <Link
           href="/cliente/pedidos"
-          className="block border rounded-md px-4 py-3 bg-amber-50 border-amber-200"
+          className="block border border-border rounded-2xl px-4 py-3 bg-surface transition-colors duration-200 active:scale-95 hover:border-accent/50"
         >
-          <p className="text-sm font-medium">
-            Tenés {activos} pedido{activos === 1 ? "" : "s"} activo{activos === 1 ? "" : "s"} — tocá para ver
+          <p className="text-sm text-foreground">
+            Tenés <span className="font-semibold text-accent">{activos}</span> pedido
+            {activos === 1 ? "" : "s"} activo{activos === 1 ? "" : "s"} — tocá para ver
           </p>
         </Link>
       ) : null}
@@ -50,23 +51,23 @@ export default async function ClientePage() {
       />
 
       {solicitudPendiente ? (
-        <div className="border rounded-md p-4 bg-neutral-50">
-          <p className="font-medium">Tu postulación como lavador está pendiente de revisión.</p>
-          <p className="text-sm text-neutral-600">
+        <div className="border border-border rounded-2xl p-4 bg-surface">
+          <p className="font-medium text-foreground">Tu postulación como lavador está pendiente de revisión.</p>
+          <p className="text-sm text-foreground-muted mt-1">
             Te vamos a contactar por mail o teléfono en breve. Mientras tanto podés
             seguir completando tus datos.
           </p>
-          <Link href="/cliente/postularme" className="text-sm underline">
+          <Link href="/cliente/postularme" className="text-sm text-accent underline mt-2 inline-block">
             Ver / completar mi postulación
           </Link>
         </div>
       ) : (
         <Link
           href="/cliente/postularme"
-          className="block border-2 border-dashed rounded-md px-4 py-4 text-center hover:bg-neutral-50"
+          className="block border-2 border-dashed border-border rounded-2xl px-4 py-4 text-center transition-colors duration-200 active:scale-95 hover:border-accent/50 hover:bg-surface"
         >
-          <p className="font-medium">¿Querés lavar?</p>
-          <p className="text-sm text-neutral-500">Sumate como lavador y empezá a generar ingresos.</p>
+          <p className="font-medium text-foreground">¿Querés lavar?</p>
+          <p className="text-sm text-foreground-muted">Sumate como lavador y empezá a generar ingresos.</p>
         </Link>
       )}
     </main>

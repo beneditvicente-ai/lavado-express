@@ -16,7 +16,7 @@ export function LogoutButton({ className }: { className?: string }) {
   return (
     <button
       onClick={cerrarSesion}
-      className={className ?? "text-sm text-neutral-500 hover:text-neutral-800 underline"}
+      className={className ?? "text-sm text-foreground-muted hover:text-foreground underline transition-colors duration-200"}
     >
       Cerrar sesión
     </button>
