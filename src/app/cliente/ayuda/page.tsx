@@ -1,6 +1,7 @@
 import { requireRol } from "@/lib/auth";
 import { LogoutButton } from "@/components/LogoutButton";
 import { ClienteCentroAyuda } from "@/components/ClienteCentroAyuda";
+import { ContactoWhatsapp } from "@/components/ContactoWhatsapp";
 
 export default async function AyudaClientePage() {
   await requireRol("cliente");
@@ -13,6 +14,7 @@ export default async function AyudaClientePage() {
       </div>
 
       <ClienteCentroAyuda />
+      <ContactoWhatsapp />
     </main>
   );
 }
