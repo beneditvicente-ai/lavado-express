@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { lavadorIdsPorZona, notificarLavadores } from "@/lib/push";
 
 // Crea el pedido express SIN lavador asignado (estado 'buscando'). El
 // precio todavia no existe: depende de que lavador lo acepte. Nunca se
@@ -72,6 +73,18 @@ export async function POST(req: Request) {
     estado_nuevo: "buscando",
     actor: "sistema",
   });
+
+  try {
+    const lavadorIds = await lavadorIdsPorZona(zona_id);
+    const { data: zona } = await admin.from("zonas_disponibles").select("nombre").eq("id", zona_id).single();
+    await notificarLavadores(lavadorIds, {
+      titulo: "Nuevo pedido en tu zona",
+      cuerpo: `Alguien pidió un lavado express${zona?.nombre ? ` en ${zona.nombre}` : ""}. Mirá el panel Express.`,
+      url: "/lavador/express",
+    });
+  } catch (e) {
+    console.error("[push] error notificando pedido express:", e);
+  }
 
   return NextResponse.json({ pedidoId: pedido.id });
 }

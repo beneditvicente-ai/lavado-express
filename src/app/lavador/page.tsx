@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { LogoutButton } from "@/components/LogoutButton";
 import { LavadorNav } from "@/components/LavadorNav";
 import { DisponibleAhoraToggle } from "@/components/DisponibleAhoraToggle";
+import { PushNotificationsToggle } from "@/components/PushNotificationsToggle";
 import { ResenasSection } from "@/components/ResenasSection";
 import { CentroAyuda } from "@/components/CentroAyuda";
 import { MenuItemLink } from "@/components/MenuItemLink";
@@ -101,6 +102,8 @@ export default async function LavadorPage() {
         lavadorId={usuario.id}
         disponibleInicial={estadoExpress?.disponible_ahora ?? false}
       />
+
+      <PushNotificationsToggle />
 
       <ResenasSection
         ratingPromedio={lavador?.rating_promedio ?? 0}
