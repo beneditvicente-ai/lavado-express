@@ -4,22 +4,26 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
-type TipoServicio = { id: string; nombre: string; descripcion: string | null };
-type PrecioActual = { tipo_servicio_id: string; precio: number };
+type TipoVehiculo = "auto" | "suv" | "pickup";
+type PrecioActual = { tipo_vehiculo: string; precio: number };
+
+const VEHICULOS: { valor: TipoVehiculo; etiqueta: string }[] = [
+  { valor: "auto", etiqueta: "Auto" },
+  { valor: "suv", etiqueta: "SUV" },
+  { valor: "pickup", etiqueta: "Pick up" },
+];
 
 export function PreciosForm({
   lavadorId,
-  tiposServicio,
   preciosActuales,
 }: {
   lavadorId: string;
-  tiposServicio: TipoServicio[];
   preciosActuales: PrecioActual[];
 }) {
   const router = useRouter();
   const [precios, setPrecios] = useState<Record<string, string>>(() => {
     const inicial: Record<string, string> = {};
-    for (const p of preciosActuales) inicial[p.tipo_servicio_id] = String(p.precio);
+    for (const p of preciosActuales) inicial[p.tipo_vehiculo] = String(p.precio);
     return inicial;
   });
   const [error, setError] = useState<string | null>(null);
@@ -32,19 +36,16 @@ export function PreciosForm({
     setGuardado(false);
     setGuardando(true);
 
-    const filas = tiposServicio
-      .filter((t) => precios[t.id] && Number(precios[t.id]) > 0)
-      .map((t) => ({
-        lavador_id: lavadorId,
-        tipo_servicio_id: t.id,
-        precio: Number(precios[t.id]),
-        activo: true,
-      }));
+    const filas = VEHICULOS.filter((v) => precios[v.valor] && Number(precios[v.valor]) > 0).map((v) => ({
+      lavador_id: lavadorId,
+      tipo_vehiculo: v.valor,
+      precio: Number(precios[v.valor]),
+    }));
 
     const supabase = createClient();
     const { error } = await supabase
-      .from("lavador_servicios")
-      .upsert(filas, { onConflict: "lavador_id,tipo_servicio_id" });
+      .from("lavador_precios_vehiculo")
+      .upsert(filas, { onConflict: "lavador_id,tipo_vehiculo" });
 
     setGuardando(false);
 
@@ -59,18 +60,21 @@ export function PreciosForm({
 
   return (
     <form onSubmit={onSubmit} className="border rounded-md p-4 space-y-3">
-      <h2 className="font-medium">Tus precios por servicio</h2>
+      <h2 className="font-medium">Tus precios por tipo de vehículo</h2>
+      <p className="text-sm text-neutral-500">
+        Lavado estándar. Podés cobrar distinto según sea auto, SUV o pick up.
+      </p>
 
-      {tiposServicio.map((t) => (
-        <div key={t.id} className="flex items-center gap-3">
-          <label className="w-28 text-sm font-medium">{t.nombre}</label>
+      {VEHICULOS.map((v) => (
+        <div key={v.valor} className="flex items-center gap-3">
+          <label className="w-20 text-sm font-medium">{v.etiqueta}</label>
           <input
             type="number"
             min={1}
             step="0.01"
             placeholder="Precio en $"
-            value={precios[t.id] ?? ""}
-            onChange={(e) => setPrecios({ ...precios, [t.id]: e.target.value })}
+            value={precios[v.valor] ?? ""}
+            onChange={(e) => setPrecios({ ...precios, [v.valor]: e.target.value })}
             className="flex-1 border rounded-md px-3 py-2"
           />
         </div>

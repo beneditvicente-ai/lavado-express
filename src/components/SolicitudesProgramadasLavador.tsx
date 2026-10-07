@@ -19,15 +19,13 @@ type Pedido = {
 export function SolicitudesProgramadasLavador({
   lavadorId,
   pedidosIniciales,
-  preciosPropios,
-  recargosVehiculo,
+  preciosPorVehiculo,
   nombresServicio,
   miPosicion,
 }: {
   lavadorId: string;
   pedidosIniciales: Pedido[];
-  preciosPropios: Record<string, number>;
-  recargosVehiculo: Record<string, number>;
+  preciosPorVehiculo: Record<string, number>;
   nombresServicio: Record<string, string>;
   miPosicion: [number, number] | null;
 }) {
@@ -67,6 +65,27 @@ export function SolicitudesProgramadasLavador({
     router.refresh();
   }
 
+  async function rechazar(id: string) {
+    const confirmar = window.confirm(
+      "¿Seguro que querés rechazar esta solicitud? Como este horario lo habías declarado libre vos mismo, se te baja un poco el rating (mucho menos que cancelar un trabajo ya tomado)."
+    );
+    if (!confirmar) return;
+
+    setError(null);
+    setProcesando(id);
+    const res = await fetch(`/api/pedidos/${id}/rechazar-invitacion`, { method: "POST" });
+    const data = await res.json();
+    setProcesando(null);
+
+    if (!res.ok) {
+      setError(data.error ?? "No se pudo rechazar");
+      return;
+    }
+
+    setPedidos((prev) => prev.filter((p) => p.id !== id));
+    router.refresh();
+  }
+
   if (pedidos.length === 0) {
     return (
       <div className="border rounded-md p-4">
@@ -87,11 +106,7 @@ export function SolicitudesProgramadasLavador({
 
       <div className="space-y-2">
         {pedidos.map((p) => {
-          const precioBase = preciosPropios[p.tipo_servicio_id];
-          const precioEstimado =
-            precioBase != null
-              ? Math.round(precioBase * (1 + (recargosVehiculo[p.tipo_vehiculo] ?? 0) / 100) * 100) / 100
-              : null;
+          const precioEstimado = preciosPorVehiculo[p.tipo_vehiculo] ?? null;
           const distancia =
             miPosicion && p.lat && p.lng ? distanciaKm(miPosicion[0], miPosicion[1], p.lat, p.lng) : null;
           return (
@@ -117,13 +132,22 @@ export function SolicitudesProgramadasLavador({
                   <p className="text-sm font-medium mt-0.5">${precioEstimado.toLocaleString("es-AR")}</p>
                 )}
               </div>
-              <button
-                onClick={() => aceptar(p.id)}
-                disabled={procesando === p.id}
-                className="bg-neutral-900 text-white rounded-md px-3 py-1.5 text-sm disabled:opacity-50 flex-shrink-0"
-              >
-                {procesando === p.id ? "..." : "Aceptar"}
-              </button>
+              <div className="flex flex-col gap-1 flex-shrink-0">
+                <button
+                  onClick={() => aceptar(p.id)}
+                  disabled={procesando === p.id}
+                  className="bg-neutral-900 text-white rounded-md px-3 py-1.5 text-sm disabled:opacity-50"
+                >
+                  {procesando === p.id ? "..." : "Aceptar"}
+                </button>
+                <button
+                  onClick={() => rechazar(p.id)}
+                  disabled={procesando === p.id}
+                  className="text-xs text-red-600 underline disabled:opacity-50"
+                >
+                  Rechazar
+                </button>
+              </div>
             </div>
           );
         })}

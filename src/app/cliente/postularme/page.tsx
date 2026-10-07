@@ -33,7 +33,6 @@ export default async function PostularmePage() {
   }
 
   const [
-    { data: tiposServicio },
     { data: preciosActuales },
     { data: zonasDisponibles },
     { data: zonasActuales },
@@ -42,10 +41,9 @@ export default async function PostularmePage() {
     { data: companerosActuales },
     { data: fotosActuales },
   ] = await Promise.all([
-    supabase.from("tipos_servicio").select("id, nombre, descripcion").order("orden"),
     supabase
-      .from("lavador_servicios")
-      .select("tipo_servicio_id, precio")
+      .from("lavador_precios_vehiculo")
+      .select("tipo_vehiculo, precio")
       .eq("lavador_id", usuario.id),
     supabase.from("zonas_disponibles").select("id, nombre").order("orden"),
     supabase.from("lavador_zonas").select("zona_id").eq("lavador_id", usuario.id),
@@ -87,11 +85,7 @@ export default async function PostularmePage() {
 
       <CompanerosForm lavadorId={usuario.id} companerosActuales={companerosActuales ?? []} />
 
-      <PreciosForm
-        lavadorId={usuario.id}
-        tiposServicio={tiposServicio ?? []}
-        preciosActuales={preciosActuales ?? []}
-      />
+      <PreciosForm lavadorId={usuario.id} preciosActuales={preciosActuales ?? []} />
 
       <ZonasForm
         lavadorId={usuario.id}

@@ -58,7 +58,7 @@ export default async function PedidosClientePage() {
         <LogoutButton />
       </div>
 
-      <TabsPedidos pedidos={lista} etiquetaContraparte="Lavador" rol="cliente" />
+      <TabsPedidos pedidos={lista} etiquetaContraparte="Lavador" rol="cliente" usuarioId={usuario.id} />
     </main>
   );
 }

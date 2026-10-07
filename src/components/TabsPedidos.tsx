@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AccionesLavadorTurno } from "@/components/AccionesLavadorTurno";
+import { ChatPedido } from "@/components/ChatPedido";
 import { MapPin, Car, Clock } from "lucide-react";
 
 export type PedidoResumen = {
@@ -23,6 +24,9 @@ export type PedidoResumen = {
 
 const ESTADOS_ACTIVOS = ["buscando", "pendiente_pago", "confirmado", "en_camino", "en_curso"];
 const ESTADOS_CANCELABLES = ["confirmado", "en_camino"];
+// el chat aparece apenas un lavador "agarra" el pedido (ya tiene lavador_id
+// asignado) y sigue disponible mientras el trabajo esta en curso.
+const ESTADOS_CON_CHAT = ["pendiente_pago", "confirmado", "en_camino", "en_curso"];
 
 const ETIQUETAS_ESTADO: Record<string, string> = {
   buscando: "Buscando lavador",
@@ -254,6 +258,9 @@ export function TabsPedidos({
                       estado={p.estado}
                       fotosIniciales={p.fotosResultado ?? []}
                     />
+                  )}
+                  {usuarioId && ESTADOS_CON_CHAT.includes(p.estado) && (
+                    <ChatPedido pedidoId={p.id} usuarioId={usuarioId} contraparteNombre={p.contraparteNombre} />
                   )}
                   {p.fotosResultado && p.fotosResultado.length > 0 && (
                     <div className="flex flex-wrap gap-1 mt-1">

@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { distanciaKm } from "@/lib/distancia";
-import { Droplets, Zap, Calendar, MapPin, Gem, Sparkles } from "lucide-react";
+import { Droplets, Zap, Calendar, MapPin } from "lucide-react";
 import { EstrellasRating } from "@/components/EstrellasRating";
 
 const UbicacionMapaSelector = dynamic(
@@ -42,7 +42,7 @@ type Candidato = {
   rating_promedio: number;
   cantidad_calificaciones: number;
   pedidos_completados_count: number;
-  precios: Record<string, number>;
+  precio: number;
   fotoUrl: string | null;
 };
 
@@ -102,7 +102,6 @@ export function PedirLavadoWizard({
   // elegir_lavadores (solo programado): lavadores libres en ese horario/zona
   // para que el cliente elija a quiénes invitar
   const [candidatos, setCandidatos] = useState<Candidato[]>([]);
-  const [recargosVehiculo, setRecargosVehiculo] = useState<Record<string, number>>({});
   const [seleccionados, setSeleccionados] = useState<Set<string>>(new Set());
   const [filtroPrecioMin, setFiltroPrecioMin] = useState<number | null>(null);
   const [filtroPrecioMax, setFiltroPrecioMax] = useState<number | null>(null);
@@ -110,11 +109,8 @@ export function PedirLavadoWizard({
   const zonaElegida = zonasDisponibles.find((z) => z.id === zonaId);
 
   const candidatosFiltrados = candidatos.filter((c) => {
-    const precioBase = c.precios[tipoServicioId];
-    if (precioBase == null) return false;
-    const precioFinal = precioBase * (1 + (recargosVehiculo[tipoVehiculo] ?? 0) / 100);
-    if (filtroPrecioMin != null && precioFinal < filtroPrecioMin) return false;
-    if (filtroPrecioMax != null && precioFinal > filtroPrecioMax) return false;
+    if (filtroPrecioMin != null && c.precio < filtroPrecioMin) return false;
+    if (filtroPrecioMax != null && c.precio > filtroPrecioMax) return false;
     return true;
   });
 
@@ -233,18 +229,11 @@ export function PedirLavadoWizard({
 
     const { data: servRows } = await supabase
       .from("lavador_servicios")
-      .select("lavador_id, tipo_servicio_id, precio")
+      .select("lavador_id")
+      .eq("tipo_servicio_id", basicoId)
       .eq("activo", true)
       .in("lavador_id", idsZona);
-    const preciosPorLavador = new Map<string, Record<string, number>>();
-    for (const r of servRows ?? []) {
-      const mapa = preciosPorLavador.get(r.lavador_id) ?? {};
-      mapa[r.tipo_servicio_id] = r.precio;
-      preciosPorLavador.set(r.lavador_id, mapa);
-    }
-    const idsConBasico = [...preciosPorLavador.entries()]
-      .filter(([, precios]) => precios[basicoId] != null)
-      .map(([id]) => id);
+    const idsConBasico = (servRows ?? []).map((r) => r.lavador_id);
     if (idsConBasico.length === 0) {
       setCandidatos([]);
       setPaso("sin_candidatos");
@@ -282,17 +271,29 @@ export function PedirLavadoWizard({
       return;
     }
 
-    const [{ data: publicos }, { data: fotos }, { data: recargos }] = await Promise.all([
+    const { data: preciosRows } = await supabase
+      .from("lavador_precios_vehiculo")
+      .select("lavador_id, precio")
+      .eq("tipo_vehiculo", tipoVehiculo)
+      .in("lavador_id", idsFinal);
+    const preciosPorLavador = new Map((preciosRows ?? []).map((r) => [r.lavador_id, r.precio]));
+    const idsConPrecio = idsFinal.filter((id) => preciosPorLavador.has(id));
+    if (idsConPrecio.length === 0) {
+      setCandidatos([]);
+      setPaso("sin_candidatos");
+      return;
+    }
+
+    const [{ data: publicos }, { data: fotos }] = await Promise.all([
       supabase
         .from("lavadores_publicos")
         .select("id, nombre, rating_promedio, cantidad_calificaciones, pedidos_completados_count")
-        .in("id", idsFinal),
+        .in("id", idsConPrecio),
       supabase
         .from("lavador_fotos")
         .select("lavador_id, storage_path")
         .eq("tipo", "perfil")
-        .in("lavador_id", idsFinal),
-      supabase.from("vehiculo_recargos").select("tipo_vehiculo, recargo_pct"),
+        .in("lavador_id", idsConPrecio),
     ]);
 
     const fotoPorLavador = new Map<string, string>();
@@ -309,7 +310,7 @@ export function PedirLavadoWizard({
       rating_promedio: p.rating_promedio,
       cantidad_calificaciones: p.cantidad_calificaciones,
       pedidos_completados_count: p.pedidos_completados_count,
-      precios: preciosPorLavador.get(p.id) ?? {},
+      precio: preciosPorLavador.get(p.id) ?? 0,
       fotoUrl: fotoPorLavador.get(p.id) ?? null,
     }));
 
@@ -318,9 +319,7 @@ export function PedirLavadoWizard({
       return;
     }
 
-    setRecargosVehiculo(Object.fromEntries((recargos ?? []).map((r) => [r.tipo_vehiculo, r.recargo_pct])));
     setCandidatos(lista);
-    setTipoServicioId(basicoId);
     setSeleccionados(new Set());
     setFiltroPrecioMin(null);
     setFiltroPrecioMax(null);
@@ -541,8 +540,7 @@ export function PedirLavadoWizard({
           <div className="rounded-lg px-3 py-2.5 bg-neutral-50 border border-neutral-200 flex items-center gap-2">
             <Droplets size={18} strokeWidth={1.75} className="text-neutral-700 flex-shrink-0" />
             <p className="text-xs text-neutral-600">
-              El lavado incluye el servicio Básico. Si alguno de los lavadores disponibles ofrece
-              Encerado o Premium, vas a poder elegirlo más adelante.
+              Lavado estándar. El precio varía según el tipo de vehículo y lo fija cada lavador.
             </p>
           </div>
 
@@ -724,30 +722,6 @@ export function PedirLavadoWizard({
             Podés invitar a varios — el primero que confirme se queda con el turno.
           </p>
 
-          <div className="flex gap-2 flex-wrap">
-            {tiposServicio
-              .filter((t) => t.id === basicoId || candidatos.some((c) => c.precios[t.id] != null))
-              .map((t) => {
-                const Icono = t.id === basicoId ? Droplets : t.nombre.toLowerCase().includes("premium") ? Gem : Sparkles;
-                return (
-                  <button
-                    key={t.id}
-                    type="button"
-                    onClick={() => {
-                      setTipoServicioId(t.id);
-                      setSeleccionados(new Set());
-                    }}
-                    className={`flex items-center gap-1.5 border rounded-full px-3 py-1.5 text-sm ${
-                      tipoServicioId === t.id ? "bg-neutral-900 text-white border-neutral-900" : "border-neutral-200"
-                    }`}
-                  >
-                    <Icono size={14} strokeWidth={1.75} />
-                    {t.nombre}
-                  </button>
-                );
-              })}
-          </div>
-
           <div className="flex items-center gap-2 text-sm">
             <span className="text-neutral-500 flex-shrink-0">Precio</span>
             <input
@@ -769,7 +743,7 @@ export function PedirLavadoWizard({
 
           {candidatosFiltrados.length === 0 ? (
             <p className="text-sm text-neutral-500 py-4 text-center">
-              Ningún lavador ofrece ese servicio en ese rango de precio.
+              Ningún lavador disponible está en ese rango de precio.
             </p>
           ) : (
             <>
@@ -788,11 +762,6 @@ export function PedirLavadoWizard({
 
               <div className="space-y-2 max-h-96 overflow-y-auto">
                 {candidatosFiltrados.map((c) => {
-                  const precioBase = c.precios[tipoServicioId];
-                  const precioFinal =
-                    precioBase != null
-                      ? Math.round(precioBase * (1 + (recargosVehiculo[tipoVehiculo] ?? 0) / 100) * 100) / 100
-                      : null;
                   const marcado = seleccionados.has(c.id);
                   return (
                     <label
@@ -831,9 +800,7 @@ export function PedirLavadoWizard({
                           lavados
                         </p>
                       </div>
-                      <p className="text-sm font-medium flex-shrink-0">
-                        {precioFinal != null ? `$${precioFinal.toLocaleString("es-AR")}` : "—"}
-                      </p>
+                      <p className="text-sm font-medium flex-shrink-0">${c.precio.toLocaleString("es-AR")}</p>
                     </label>
                   );
                 })}

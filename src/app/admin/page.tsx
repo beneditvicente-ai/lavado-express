@@ -23,7 +23,6 @@ export default async function AdminPage() {
     { data: companeros },
     { data: precios },
     { data: zonasElegidas },
-    { data: tiposServicio },
     { data: zonasDisponibles },
   ] = await Promise.all([
     Promise.all(
@@ -40,19 +39,17 @@ export default async function AdminPage() {
       : { data: [] },
     usuarioIds.length
       ? admin
-          .from("lavador_servicios")
-          .select("lavador_id, tipo_servicio_id, precio")
+          .from("lavador_precios_vehiculo")
+          .select("lavador_id, tipo_vehiculo, precio")
           .in("lavador_id", usuarioIds)
       : { data: [] },
     usuarioIds.length
       ? admin.from("lavador_zonas").select("lavador_id, zona_id").in("lavador_id", usuarioIds)
       : { data: [] },
-    admin.from("tipos_servicio").select("id, nombre"),
     admin.from("zonas_disponibles").select("id, nombre"),
   ]);
 
   const emailPorId = new Map(emails);
-  const nombreServicioPorId = new Map((tiposServicio ?? []).map((t) => [t.id, t.nombre]));
   const nombreZonaPorId = new Map((zonasDisponibles ?? []).map((z) => [z.id, z.nombre]));
 
   const solicitudesCompletas = (solicitudes ?? []).map((s) => ({
@@ -68,7 +65,7 @@ export default async function AdminPage() {
     precios: (precios ?? [])
       .filter((p) => p.lavador_id === s.usuario_id)
       .map((p) => ({
-        servicio: nombreServicioPorId.get(p.tipo_servicio_id) ?? "?",
+        servicio: p.tipo_vehiculo,
         precio: p.precio,
       })),
     zonas: (zonasElegidas ?? [])

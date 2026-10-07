@@ -23,7 +23,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   const { data: pedido } = await admin
     .from("pedidos")
-    .select("id, estado, lavador_id, tipo, tipo_servicio_id, tipo_vehiculo")
+    .select("id, estado, lavador_id, tipo, tipo_vehiculo")
     .eq("id", pedidoId)
     .single();
 
@@ -31,23 +31,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ error: "Este pedido ya no está disponible" }, { status: 409 });
   }
 
-  const { data: servicio } = await admin
-    .from("lavador_servicios")
+  const { data: precioVehiculo } = await admin
+    .from("lavador_precios_vehiculo")
     .select("precio")
     .eq("lavador_id", user.id)
-    .eq("tipo_servicio_id", pedido.tipo_servicio_id)
-    .eq("activo", true)
-    .single();
-
-  if (!servicio) {
-    return NextResponse.json({ error: "No tenés precio cargado para ese servicio" }, { status: 400 });
-  }
-
-  const { data: vehiculo } = await admin
-    .from("vehiculo_recargos")
-    .select("recargo_pct")
     .eq("tipo_vehiculo", pedido.tipo_vehiculo)
     .single();
+
+  if (!precioVehiculo) {
+    return NextResponse.json(
+      { error: "No tenés precio cargado para ese tipo de vehículo" },
+      { status: 400 }
+    );
+  }
 
   // el recargo express solo aplica si el pedido es express -- para
   // programado el precio no lleva recargo.
@@ -68,7 +64,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   // el plazo (fecha_limite_express) ya lo declaro el cliente al pedirlo,
   // no se toca aca: el lavador lo vio y decidio aceptar sabiendo ese limite.
 
-  const precioBase = Math.round(servicio.precio * (1 + (vehiculo?.recargo_pct ?? 0) / 100) * 100) / 100;
+  const precioBase = precioVehiculo.precio;
   const precioTotal = Math.round(precioBase * (1 + recargoExpresoPct / 100) * 100) / 100;
   const montoComision = Math.round((precioTotal * (comisionPct ?? 25)) / 100 * 100) / 100;
   const montoLavador = Math.round((precioTotal - montoComision) * 100) / 100;

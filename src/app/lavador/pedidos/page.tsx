@@ -18,8 +18,7 @@ export default async function PedidosLavadorPage() {
     { data: disponibilidad },
     { data: tiposServicio },
     { data: solicitudesProgramadas },
-    { data: preciosPropios },
-    { data: vehiculoRecargos },
+    { data: preciosPorVehiculo },
   ] = await Promise.all([
     supabase
       .from("pedidos")
@@ -45,8 +44,7 @@ export default async function PedidosLavadorPage() {
       .eq("tipo", "programado")
       .is("lavador_id", null)
       .order("fecha_hora_turno", { ascending: true }),
-    supabase.from("lavador_servicios").select("tipo_servicio_id, precio").eq("lavador_id", usuario.id),
-    supabase.from("vehiculo_recargos").select("tipo_vehiculo, recargo_pct"),
+    supabase.from("lavador_precios_vehiculo").select("tipo_vehiculo, precio").eq("lavador_id", usuario.id),
   ]);
 
   const { data: estadoExpress } = await supabase
@@ -68,11 +66,8 @@ export default async function PedidosLavadorPage() {
     fotosPorPedido.set(f.pedido_id, [...(fotosPorPedido.get(f.pedido_id) ?? []), url]);
   }
 
-  const preciosPorServicio = Object.fromEntries(
-    (preciosPropios ?? []).map((p) => [p.tipo_servicio_id, p.precio])
-  );
-  const recargosPorVehiculo = Object.fromEntries(
-    (vehiculoRecargos ?? []).map((v) => [v.tipo_vehiculo, v.recargo_pct])
+  const preciosVehiculoMap = Object.fromEntries(
+    (preciosPorVehiculo ?? []).map((p) => [p.tipo_vehiculo, p.precio])
   );
   const nombresServicio = Object.fromEntries((tiposServicio ?? []).map((t) => [t.id, t.nombre]));
 
@@ -139,8 +134,7 @@ export default async function PedidosLavadorPage() {
       <SolicitudesProgramadasLavador
         lavadorId={usuario.id}
         pedidosIniciales={solicitudesProgramadas ?? []}
-        preciosPropios={preciosPorServicio}
-        recargosVehiculo={recargosPorVehiculo}
+        preciosPorVehiculo={preciosVehiculoMap}
         nombresServicio={nombresServicio}
         miPosicion={miPosicion}
       />
