@@ -113,6 +113,24 @@ export function TabsPedidos({
   const [eliminando, setEliminando] = useState<string | null>(null);
   const [eliminados, setEliminados] = useState<Set<string>>(new Set());
   const [mensaje, setMensaje] = useState<string | null>(null);
+  const [pagando, setPagando] = useState<string | null>(null);
+
+  async function pagar(id: string) {
+    setMensaje(null);
+    setPagando(id);
+    const res = await fetch(`/api/pedidos/${id}/pagar`, { method: "POST" });
+    const data = await res.json();
+
+    if (!res.ok) {
+      setPagando(null);
+      setMensaje(data.error ?? "No se pudo iniciar el pago");
+      return;
+    }
+
+    // se queda "pagando" hasta que el navegador termine de salir hacia
+    // Mercado Pago -- si falla por lo que sea, se puede reintentar
+    window.location.href = data.url;
+  }
 
   useEffect(() => {
     const intervalo = setInterval(() => setAhora(Date.now()), 30000);
@@ -327,9 +345,18 @@ export function TabsPedidos({
               )}
 
               {(ESTADOS_CANCELABLES.includes(p.estado) ||
-                (rol === "lavador" && p.estado === "pendiente_pago") ||
+                p.estado === "pendiente_pago" ||
                 !ESTADOS_ACTIVOS.includes(p.estado)) && (
                 <div className="flex gap-2 flex-wrap pt-1">
+                  {rol === "cliente" && p.estado === "pendiente_pago" && (
+                    <button
+                      onClick={() => pagar(p.id)}
+                      disabled={pagando === p.id}
+                      className="text-xs font-semibold bg-accent text-accent-foreground rounded-full px-4 py-1.5 transition-all duration-200 active:scale-95 disabled:opacity-50"
+                    >
+                      {pagando === p.id ? "Abriendo Mercado Pago..." : "Pagar ahora"}
+                    </button>
+                  )}
                   {ESTADOS_CANCELABLES.includes(p.estado) && (
                     <button
                       onClick={() => cancelar(p.id)}
