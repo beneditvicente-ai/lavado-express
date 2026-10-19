@@ -8,6 +8,8 @@ import { BloqueosForm } from "@/components/BloqueosForm";
 import { TurnosCalendar } from "@/components/TurnosCalendar";
 import { SolicitudesProgramadasLavador } from "@/components/SolicitudesProgramadasLavador";
 
+const ESTADOS_POST_PAGO = ["confirmado", "en_camino", "en_curso", "completado", "calificado"];
+
 export default async function PedidosLavadorPage() {
   const usuario = await requireRol("lavador");
   const supabase = await createClient();
@@ -27,7 +29,8 @@ export default async function PedidosLavadorPage() {
       )
       .eq("lavador_id", usuario.id)
       .eq("oculto_lavador", false)
-      .order("creado_en", { ascending: false }),
+      .order("creado_en", { ascending: false })
+      .limit(50),
     supabase
       .from("lavador_bloqueos")
       .select("id, fecha, hora_inicio, hora_fin, motivo")
@@ -81,6 +84,12 @@ export default async function PedidosLavadorPage() {
       });
       const nombre = contraparte?.[0]?.nombre ?? "—";
 
+      let telefono: string | null = null;
+      if (ESTADOS_POST_PAGO.includes(p.estado)) {
+        const { data } = await supabase.rpc("get_telefono_contraparte", { p_pedido_id: p.id });
+        telefono = (data as string | null) ?? null;
+      }
+
       lista.push({
         id: p.id,
         tipo: p.tipo,
@@ -89,6 +98,8 @@ export default async function PedidosLavadorPage() {
         fecha_hora_turno: p.fecha_hora_turno,
         creado_en: p.creado_en,
         contraparteNombre: nombre,
+        telefonoContraparte: telefono,
+        tipoServicioNombre: nombreServicioPorId.get(p.tipo_servicio_id) ?? null,
         direccionTexto: p.direccion_texto,
         detallesVehiculo: p.detalles_vehiculo,
         lat: p.lat,

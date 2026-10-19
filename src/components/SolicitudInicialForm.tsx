@@ -74,7 +74,8 @@ export function SolicitudInicialForm() {
           className="w-full border rounded-md px-3 py-2"
         />
         <p className="text-xs text-neutral-500">
-          Nunca se muestra a los clientes — lo usamos para contactarte nosotros.
+          Se lo compartimos al cliente por WhatsApp recién después de que confirme y pague el turno
+          (nunca antes).
         </p>
       </div>
 

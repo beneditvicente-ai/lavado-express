@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 
 export function AccionesLavadorTurno({
@@ -93,8 +94,14 @@ export function AccionesLavadorTurno({
         </p>
         <div className="flex flex-wrap gap-2">
           {fotos.map((url, i) => (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img key={i} src={url} alt="Resultado" className="w-14 h-14 object-cover rounded-md border" />
+            <Image
+              key={i}
+              src={url}
+              alt="Resultado"
+              width={56}
+              height={56}
+              className="w-14 h-14 object-cover rounded-md border"
+            />
           ))}
           <button
             type="button"

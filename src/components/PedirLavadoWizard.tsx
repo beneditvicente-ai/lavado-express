@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
-import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 import { distanciaKm } from "@/lib/distancia";
 import { Droplets, Zap, Calendar, MapPin } from "lucide-react";
@@ -10,7 +10,7 @@ import { EstrellasRating } from "@/components/EstrellasRating";
 
 const UbicacionMapaSelector = dynamic(
   () => import("@/components/UbicacionMapaSelector").then((m) => m.UbicacionMapaSelector),
-  { ssr: false, loading: () => <div className="h-64 rounded-md border bg-neutral-50" /> }
+  { ssr: false, loading: () => <div className="h-64 rounded-2xl border border-border bg-surface-raised animate-pulse" /> }
 );
 
 type TipoServicio = { id: string; nombre: string; descripcion: string | null };
@@ -23,8 +23,7 @@ type Paso =
   | "elegir_lavadores"
   | "sin_candidatos"
   | "esperando_lavador"
-  | "lavador_encontrado"
-  | "listo";
+  | "lavador_encontrado";
 type TipoVehiculo = "auto" | "suv" | "pickup";
 type TipoPedido = "programado" | "express";
 
@@ -60,18 +59,12 @@ export function PedirLavadoWizard({
   tiposServicio: TipoServicio[];
   zonasDisponibles: ZonaDisponible[];
 }) {
-  const router = useRouter();
   const [paso, setPaso] = useState<Paso>("datos");
   const [error, setError] = useState<string | null>(null);
 
-  // el lavado básico es el piso obligatorio: nunca se elige el tipo de
-  // servicio de entrada. Si algún lavador candidato ofrece Encerado/Premium,
-  // esa opción aparece recién en el paso de elegir lavadores.
-  const basicoId = tiposServicio.find((t) => t.nombre.toLowerCase().startsWith("basic"))?.id ?? tiposServicio[0]?.id ?? "";
-
   // datos
   const [tipoVehiculo, setTipoVehiculo] = useState<TipoVehiculo>("auto");
-  const [tipoServicioId, setTipoServicioId] = useState(basicoId);
+  const [tipoServicioId, setTipoServicioId] = useState(tiposServicio[0]?.id ?? "");
   const [calle, setCalle] = useState("");
   const [zonaId, setZonaId] = useState(zonasDisponibles[0]?.id ?? "");
   const [loteBarrio, setLoteBarrio] = useState("");
@@ -180,6 +173,10 @@ export function PedirLavadoWizard({
 
   function irAModo(e: React.FormEvent) {
     e.preventDefault();
+    if (!detallesVehiculo.trim()) {
+      setError("Contanos el modelo de tu vehículo.");
+      return;
+    }
     if (!calle.trim() || !zonaId) {
       setError("Completá dirección y zona.");
       return;
@@ -230,11 +227,11 @@ export function PedirLavadoWizard({
     const { data: servRows } = await supabase
       .from("lavador_servicios")
       .select("lavador_id")
-      .eq("tipo_servicio_id", basicoId)
+      .eq("tipo_servicio_id", tipoServicioId)
       .eq("activo", true)
       .in("lavador_id", idsZona);
-    const idsConBasico = (servRows ?? []).map((r) => r.lavador_id);
-    if (idsConBasico.length === 0) {
+    const idsConServicio = (servRows ?? []).map((r) => r.lavador_id);
+    if (idsConServicio.length === 0) {
       setCandidatos([]);
       setPaso("sin_candidatos");
       return;
@@ -244,7 +241,7 @@ export function PedirLavadoWizard({
       .from("lavador_disponibilidad")
       .select("lavador_id, hora_inicio, hora_fin")
       .eq("dia_semana", diaSemana)
-      .in("lavador_id", idsConBasico);
+      .in("lavador_id", idsConServicio);
     const idsDisponibles = (dispRows ?? [])
       .filter((d) => d.hora_inicio <= horaStr && d.hora_fin >= horaStr)
       .map((d) => d.lavador_id);
@@ -479,45 +476,29 @@ export function PedirLavadoWizard({
       return;
     }
 
-    setPaso("listo");
-    router.refresh();
-  }
-
-  if (paso === "listo") {
-    return (
-      <div className="border rounded-md p-6 text-center space-y-4">
-        <p className="text-lg font-medium">¡Turno confirmado!</p>
-        <p className="text-sm text-neutral-500">
-          (Pago simulado — todavía falta conectar Mercado Pago de verdad)
-        </p>
-        <div className="flex gap-2 justify-center">
-          <a href="/cliente/pedidos" className="border rounded-md px-4 py-2 text-sm">
-            Ver mis pedidos
-          </a>
-          <a href="/cliente" className="bg-neutral-900 text-white rounded-md px-4 py-2 text-sm">
-            Volver al inicio
-          </a>
-        </div>
-      </div>
-    );
+    // el turno se confirma recien cuando llega el webhook de Mercado Pago
+    // con el pago aprobado -- acá solo redirigimos al checkout
+    window.location.href = data.url;
   }
 
   return (
-    <div className="border rounded-md p-4 space-y-4">
+    <div className="border border-border rounded-2xl p-4 space-y-4 bg-surface">
       {paso === "datos" && (
-        <form onSubmit={irAModo} className="space-y-3">
-          <h2 className="font-medium">¿Qué necesitás lavar?</h2>
+        <form onSubmit={irAModo} className="space-y-4">
+          <h2 className="font-display font-bold text-lg text-foreground tracking-tight">¿Qué necesitás lavar?</h2>
 
-          <div className="space-y-1">
-            <label className="text-sm font-medium">Tipo de vehículo</label>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-foreground">Tipo de vehículo</label>
             <div className="flex gap-2">
               {VEHICULOS.map((v) => (
                 <button
                   key={v.valor}
                   type="button"
                   onClick={() => setTipoVehiculo(v.valor)}
-                  className={`border rounded-md px-3 py-2 text-sm ${
-                    tipoVehiculo === v.valor ? "bg-neutral-900 text-white" : ""
+                  className={`border rounded-full px-4 py-2 text-sm font-medium transition-all duration-200 active:scale-95 ${
+                    tipoVehiculo === v.valor
+                      ? "bg-accent border-accent text-accent-foreground"
+                      : "border-border text-foreground-muted hover:border-accent/40"
                   }`}
                 >
                   {v.etiqueta}
@@ -526,40 +507,43 @@ export function PedirLavadoWizard({
             </div>
           </div>
 
-          <div className="space-y-1">
-            <label className="text-sm font-medium">Detalles del vehículo</label>
-            <input
-              value={detallesVehiculo}
-              onChange={(e) => setDetallesVehiculo(e.target.value)}
-              placeholder="ej: Corolla gris, patente AB123CD"
-              className="w-full border rounded-md px-3 py-2"
-            />
-            <p className="text-xs text-neutral-500">Así el lavador lo reconoce al llegar.</p>
-          </div>
-
-          <div className="rounded-lg px-3 py-2.5 bg-neutral-50 border border-neutral-200 flex items-center gap-2">
-            <Droplets size={18} strokeWidth={1.75} className="text-neutral-700 flex-shrink-0" />
-            <p className="text-xs text-neutral-600">
+          <div className="rounded-2xl px-3.5 py-3 bg-surface-raised border border-border flex items-center gap-2.5">
+            <Droplets size={18} strokeWidth={1.75} className="text-accent flex-shrink-0" />
+            <p className="text-xs text-foreground-muted">
               Lavado estándar. El precio varía según el tipo de vehículo y lo fija cada lavador.
             </p>
           </div>
 
-          <div className="space-y-1">
-            <label className="text-sm font-medium">Dirección exacta</label>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-foreground">
+              Modelo de vehículo <span className="text-accent">*</span>
+            </label>
+            <input
+              required
+              value={detallesVehiculo}
+              onChange={(e) => setDetallesVehiculo(e.target.value)}
+              placeholder="ej: Corolla gris, patente AB123CD"
+              className="w-full bg-surface-raised border border-border rounded-xl px-3.5 py-2.5 text-foreground placeholder:text-foreground-muted transition-all duration-200 focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/25"
+            />
+            <p className="text-xs text-foreground-muted">Así el lavador lo reconoce al llegar.</p>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-foreground">Dirección exacta</label>
             <input
               value={calle}
               onChange={(e) => setCalle(e.target.value)}
               placeholder="Calle y número"
-              className="w-full border rounded-md px-3 py-2"
+              className="w-full bg-surface-raised border border-border rounded-xl px-3.5 py-2.5 text-foreground placeholder:text-foreground-muted transition-all duration-200 focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/25"
             />
           </div>
 
-          <div className="space-y-1">
-            <label className="text-sm font-medium">Localidad</label>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-foreground">Localidad</label>
             <select
               value={zonaId}
               onChange={(e) => setZonaId(e.target.value)}
-              className="w-full border rounded-md px-3 py-2"
+              className="w-full bg-surface-raised border border-border rounded-xl px-3.5 py-2.5 text-foreground transition-all duration-200 focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/25"
             >
               {zonasDisponibles.map((z) => (
                 <option key={z.id} value={z.id}>
@@ -569,53 +553,56 @@ export function PedirLavadoWizard({
             </select>
           </div>
 
-          <div className="space-y-1">
-            <label className="text-sm font-medium">Lote / Barrio (opcional)</label>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-foreground">Lote / Barrio (opcional)</label>
             <input
               value={loteBarrio}
               onChange={(e) => setLoteBarrio(e.target.value)}
               placeholder="ej: Lote 45, Barrio Los Álamos"
-              className="w-full border rounded-md px-3 py-2"
+              className="w-full bg-surface-raised border border-border rounded-xl px-3.5 py-2.5 text-foreground placeholder:text-foreground-muted transition-all duration-200 focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/25"
             />
-            <p className="text-xs text-neutral-500">
+            <p className="text-xs text-foreground-muted">
               Si estás en un barrio cerrado o el GPS no marca el lote exacto, agregalo acá.
             </p>
           </div>
 
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-sm text-red-400">{error}</p>}
 
-          <button type="submit" className="bg-neutral-900 text-white rounded-md px-4 py-2">
+          <button
+            type="submit"
+            className="w-full bg-accent text-accent-foreground rounded-full px-6 py-3.5 font-semibold shadow-lg shadow-accent/20 transition-all duration-200 active:scale-95"
+          >
             Continuar
           </button>
         </form>
       )}
 
       {paso === "modo" && (
-        <div className="space-y-3">
-          <h2 className="font-medium">¿Cuándo lo necesitás?</h2>
+        <div className="space-y-4">
+          <h2 className="font-display font-bold text-lg text-foreground tracking-tight">¿Cuándo lo necesitás?</h2>
 
           <div className="flex gap-2">
             <button
               onClick={() => setTipo("express")}
-              className={`flex-1 rounded-lg px-3 py-4 border-2 text-left ${
-                tipo === "express" ? "bg-neutral-900 text-white border-neutral-900" : "border-neutral-200"
+              className={`flex-1 rounded-2xl px-4 py-4 border-2 text-left transition-all duration-200 active:scale-95 ${
+                tipo === "express" ? "bg-accent border-accent text-accent-foreground" : "border-border text-foreground"
               }`}
             >
               <Zap size={22} strokeWidth={1.75} />
-              <p className="font-medium text-sm mt-1">Express</p>
-              <p className={`text-xs mt-0.5 ${tipo === "express" ? "text-neutral-300" : "text-neutral-500"}`}>
+              <p className="font-semibold text-sm mt-1.5">Express</p>
+              <p className={`text-xs mt-0.5 ${tipo === "express" ? "text-accent-foreground/70" : "text-foreground-muted"}`}>
                 Alguien viene ya, con GPS en vivo
               </p>
             </button>
             <button
               onClick={() => setTipo("programado")}
-              className={`flex-1 rounded-lg px-3 py-4 border-2 text-left ${
-                tipo === "programado" ? "bg-neutral-900 text-white border-neutral-900" : "border-neutral-200"
+              className={`flex-1 rounded-2xl px-4 py-4 border-2 text-left transition-all duration-200 active:scale-95 ${
+                tipo === "programado" ? "bg-accent border-accent text-accent-foreground" : "border-border text-foreground"
               }`}
             >
               <Calendar size={22} strokeWidth={1.75} />
-              <p className="font-medium text-sm mt-1">Programado</p>
-              <p className={`text-xs mt-0.5 ${tipo === "programado" ? "text-neutral-300" : "text-neutral-500"}`}>
+              <p className="font-semibold text-sm mt-1.5">Programado</p>
+              <p className={`text-xs mt-0.5 ${tipo === "programado" ? "text-accent-foreground/70" : "text-foreground-muted"}`}>
                 Elegís día y hora
               </p>
             </button>
@@ -627,9 +614,9 @@ export function PedirLavadoWizard({
                 type="datetime-local"
                 value={fechaHora}
                 onChange={(e) => setFechaHora(e.target.value)}
-                className="w-full border rounded-md px-3 py-2"
+                className="w-full bg-surface-raised border border-border rounded-xl px-3.5 py-2.5 text-foreground transition-all duration-200 focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/25"
               />
-              <p className="text-sm text-neutral-500">
+              <p className="text-sm text-foreground-muted">
                 Te mostramos los lavadores libres en ese horario para que elijas a quién invitar —
                 podés invitar a varios. El primero que confirma se queda con el turno. No se te
                 cobra nada hasta entonces.
@@ -639,11 +626,11 @@ export function PedirLavadoWizard({
 
           {tipo === "express" && (
             <div className="space-y-2">
-              <label className="text-sm font-medium">¿Cuánto tiempo podés dejar el auto?</label>
+              <label className="text-sm font-medium text-foreground">¿Cuánto tiempo podés dejar el auto?</label>
               <select
                 value={horasDisponibles}
                 onChange={(e) => setHorasDisponibles(Number(e.target.value))}
-                className="w-full border rounded-md px-3 py-2"
+                className="w-full bg-surface-raised border border-border rounded-xl px-3.5 py-2.5 text-foreground transition-all duration-200 focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/25"
               >
                 <option value={2}>2 horas (mínimo)</option>
                 <option value={3}>3 horas</option>
@@ -651,7 +638,7 @@ export function PedirLavadoWizard({
                 <option value={6}>6 horas</option>
                 <option value={8}>Todo el día</option>
               </select>
-              <p className="text-sm text-neutral-500">
+              <p className="text-sm text-foreground-muted">
                 Vamos a pedirte tu ubicación exacta y se lo vamos a mostrar a los lavadores junto
                 con este tiempo, para que decidan si te pueden aceptar. No se te cobra nada hasta
                 que confirmes.
@@ -659,13 +646,19 @@ export function PedirLavadoWizard({
             </div>
           )}
 
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-sm text-red-400">{error}</p>}
 
           <div className="flex gap-2">
-            <button onClick={() => setPaso("datos")} className="border rounded-md px-4 py-2">
+            <button
+              onClick={() => setPaso("datos")}
+              className="border border-border text-foreground rounded-full px-5 py-3 transition-all duration-200 active:scale-95"
+            >
               Volver
             </button>
-            <button onClick={buscar} className="bg-neutral-900 text-white rounded-md px-4 py-2">
+            <button
+              onClick={buscar}
+              className="flex-1 bg-accent text-accent-foreground rounded-full px-6 py-3 font-semibold shadow-lg shadow-accent/20 transition-all duration-200 active:scale-95"
+            >
               Buscar lavadores
             </button>
           </div>
@@ -674,28 +667,33 @@ export function PedirLavadoWizard({
 
       {paso === "confirmar_ubicacion" && ubicacionMapa && (
         <div className="space-y-3">
-          <h2 className="font-medium">Confirmá dónde está el auto</h2>
-          <p className="text-sm text-neutral-500">
+          <h2 className="font-display font-bold text-lg text-foreground tracking-tight">Confirmá dónde está el auto</h2>
+          <p className="text-sm text-foreground-muted">
             Movés el pin si no es exacto — esto es lo que va a ver el lavador.
           </p>
 
-          <UbicacionMapaSelector posicion={[ubicacionMapa.lat, ubicacionMapa.lng]} onMover={moverPin} />
+          <div className="rounded-2xl overflow-hidden border border-border">
+            <UbicacionMapaSelector posicion={[ubicacionMapa.lat, ubicacionMapa.lng]} onMover={moverPin} />
+          </div>
 
-          <p className="text-sm flex items-center gap-1.5">
-            <MapPin size={16} className="flex-shrink-0 text-neutral-500" />
+          <p className="text-sm flex items-center gap-1.5 text-foreground">
+            <MapPin size={16} className="flex-shrink-0 text-accent" />
             {geocodificando ? "Buscando dirección..." : direccionMapa}
           </p>
 
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-sm text-red-400">{error}</p>}
 
           <div className="flex gap-2">
-            <button onClick={() => setPaso("modo")} className="border rounded-md px-4 py-2">
+            <button
+              onClick={() => setPaso("modo")}
+              className="border border-border text-foreground rounded-full px-5 py-3 transition-all duration-200 active:scale-95"
+            >
               Volver
             </button>
             <button
               onClick={confirmarUbicacionYBuscar}
               disabled={geocodificando}
-              className="flex-1 bg-neutral-900 text-white rounded-md px-4 py-2 disabled:opacity-50"
+              className="flex-1 bg-accent text-accent-foreground rounded-full px-6 py-3 font-semibold shadow-lg shadow-accent/20 transition-all duration-200 active:scale-95 disabled:opacity-50 disabled:active:scale-100"
             >
               Confirmar y buscar lavador
             </button>
@@ -703,51 +701,61 @@ export function PedirLavadoWizard({
         </div>
       )}
 
-      {paso === "buscando" && <p className="text-neutral-500">Buscando lavadores...</p>}
+      {paso === "buscando" && (
+        <div className="flex items-center gap-2.5 py-6 justify-center">
+          <span className="w-2 h-2 rounded-full bg-accent animate-bounce [animation-delay:-0.3s]" />
+          <span className="w-2 h-2 rounded-full bg-accent animate-bounce [animation-delay:-0.15s]" />
+          <span className="w-2 h-2 rounded-full bg-accent animate-bounce" />
+          <p className="text-foreground-muted text-sm ml-1">Buscando lavadores...</p>
+        </div>
+      )}
 
       {paso === "sin_candidatos" && (
         <div className="space-y-3 text-center py-6">
-          <p className="font-medium">No encontramos lavadores libres en ese horario y localidad.</p>
-          <p className="text-sm text-neutral-500">Probá con otro día/hora, o usá el modo Express.</p>
-          <button onClick={() => setPaso("modo")} className="border rounded-md px-4 py-2 text-sm">
+          <p className="font-medium text-foreground">No encontramos lavadores libres en ese horario y localidad.</p>
+          <p className="text-sm text-foreground-muted">Probá con otro día/hora, o usá el modo Express.</p>
+          <button
+            onClick={() => setPaso("modo")}
+            className="border border-border text-foreground rounded-full px-5 py-2.5 text-sm transition-all duration-200 active:scale-95"
+          >
             Volver
           </button>
         </div>
       )}
 
       {paso === "elegir_lavadores" && (
-        <div className="space-y-3">
-          <h2 className="font-medium">Elegí a quién invitar</h2>
-          <p className="text-sm text-neutral-500">
+        <div className="space-y-4">
+          <h2 className="font-display font-bold text-lg text-foreground tracking-tight">Elegí a quién invitar</h2>
+          <p className="text-sm text-foreground-muted">
             Podés invitar a varios — el primero que confirme se queda con el turno.
           </p>
 
           <div className="flex items-center gap-2 text-sm">
-            <span className="text-neutral-500 flex-shrink-0">Precio</span>
+            <span className="text-foreground-muted flex-shrink-0">Precio</span>
             <input
               type="number"
               placeholder="Mín"
               value={filtroPrecioMin ?? ""}
               onChange={(e) => setFiltroPrecioMin(e.target.value ? Number(e.target.value) : null)}
-              className="w-full border rounded-md px-2 py-1.5"
+              className="w-full bg-surface-raised border border-border rounded-xl px-3 py-2 text-foreground placeholder:text-foreground-muted transition-all duration-200 focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/25"
             />
-            <span className="text-neutral-400">–</span>
+            <span className="text-foreground-muted">–</span>
             <input
               type="number"
               placeholder="Máx"
               value={filtroPrecioMax ?? ""}
               onChange={(e) => setFiltroPrecioMax(e.target.value ? Number(e.target.value) : null)}
-              className="w-full border rounded-md px-2 py-1.5"
+              className="w-full bg-surface-raised border border-border rounded-xl px-3 py-2 text-foreground placeholder:text-foreground-muted transition-all duration-200 focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/25"
             />
           </div>
 
           {candidatosFiltrados.length === 0 ? (
-            <p className="text-sm text-neutral-500 py-4 text-center">
+            <p className="text-sm text-foreground-muted py-4 text-center">
               Ningún lavador disponible está en ese rango de precio.
             </p>
           ) : (
             <>
-              <label className="flex items-center gap-2 text-sm font-medium border-b pb-2">
+              <label className="flex items-center gap-2 text-sm font-medium text-foreground border-b border-border pb-2">
                 <input
                   type="checkbox"
                   checked={seleccionados.size === candidatosFiltrados.length}
@@ -756,6 +764,7 @@ export function PedirLavadoWizard({
                       e.target.checked ? new Set(candidatosFiltrados.map((c) => c.id)) : new Set()
                     )
                   }
+                  className="accent-accent"
                 />
                 Seleccionar todos ({candidatosFiltrados.length})
               </label>
@@ -766,13 +775,11 @@ export function PedirLavadoWizard({
                   return (
                     <label
                       key={c.id}
-                      className={`flex items-center gap-3 border rounded-md p-3 cursor-pointer ${
-                        marcado ? "border-neutral-900 bg-neutral-50" : "border-neutral-200"
+                      className={`flex items-center gap-3 border rounded-2xl p-3 cursor-pointer transition-all duration-200 active:scale-95 ${
+                        marcado ? "border-accent bg-accent/10" : "border-border bg-surface-raised"
                       }`}
                     >
-                      <input
-                        type="checkbox"
-                        checked={marcado}
+                      <input type="checkbox" checked={marcado} className="accent-accent"
                         onChange={() =>
                           setSeleccionados((prev) => {
                             const next = new Set(prev);
@@ -783,24 +790,27 @@ export function PedirLavadoWizard({
                         }
                       />
                       {c.fotoUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
+                        <Image
                           src={c.fotoUrl}
                           alt={c.nombre}
+                          width={40}
+                          height={40}
                           className="w-10 h-10 rounded-full object-cover flex-shrink-0"
                         />
                       ) : (
-                        <div className="w-10 h-10 rounded-full bg-neutral-200 flex-shrink-0" />
+                        <div className="w-10 h-10 rounded-full bg-surface flex-shrink-0" />
                       )}
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{c.nombre}</p>
-                        <p className="text-xs text-neutral-500 flex items-center gap-1">
+                        <p className="text-sm font-medium text-foreground truncate">{c.nombre}</p>
+                        <p className="text-xs text-foreground-muted flex items-center gap-1">
                           <EstrellasRating puntaje={c.rating_promedio} size={11} />
                           {c.rating_promedio.toFixed(1)} ({c.cantidad_calificaciones}) · {c.pedidos_completados_count}{" "}
                           lavados
                         </p>
                       </div>
-                      <p className="text-sm font-medium flex-shrink-0">${c.precio.toLocaleString("es-AR")}</p>
+                      <p className="text-sm font-semibold text-foreground flex-shrink-0">
+                        ${c.precio.toLocaleString("es-AR")}
+                      </p>
                     </label>
                   );
                 })}
@@ -808,16 +818,19 @@ export function PedirLavadoWizard({
             </>
           )}
 
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-sm text-red-400">{error}</p>}
 
           <div className="flex gap-2">
-            <button onClick={() => setPaso("modo")} className="border rounded-md px-4 py-2">
+            <button
+              onClick={() => setPaso("modo")}
+              className="border border-border text-foreground rounded-full px-5 py-3 transition-all duration-200 active:scale-95"
+            >
               Volver
             </button>
             <button
               onClick={enviarInvitaciones}
               disabled={seleccionados.size === 0}
-              className="flex-1 bg-neutral-900 text-white rounded-md px-4 py-2 disabled:opacity-50"
+              className="flex-1 bg-accent text-accent-foreground rounded-full px-6 py-3 font-semibold shadow-lg shadow-accent/20 transition-all duration-200 active:scale-95 disabled:opacity-50 disabled:active:scale-100"
             >
               Invitar a {seleccionados.size || ""} lavador{seleccionados.size === 1 ? "" : "es"}
             </button>
@@ -827,46 +840,55 @@ export function PedirLavadoWizard({
 
       {paso === "esperando_lavador" && (
         <div className="space-y-3 text-center py-6">
-          <p className="font-medium">
+          <div className="flex items-center gap-2.5 justify-center">
+            <span className="w-2 h-2 rounded-full bg-accent animate-bounce [animation-delay:-0.3s]" />
+            <span className="w-2 h-2 rounded-full bg-accent animate-bounce [animation-delay:-0.15s]" />
+            <span className="w-2 h-2 rounded-full bg-accent animate-bounce" />
+          </div>
+          <p className="font-medium text-foreground">
             {tipo === "express" ? "Buscando un lavador cerca tuyo..." : "Esperando que algún lavador confirme..."}
           </p>
-          <p className="text-sm text-neutral-500">
+          <p className="text-sm text-foreground-muted">
             En cuanto alguien acepte, te avisamos acá mismo. Todavía no se te cobró nada.
           </p>
-          {error && <p className="text-sm text-red-600">{error}</p>}
-          <button onClick={cancelarBusqueda} className="border rounded-md px-4 py-2 text-sm">
+          {error && <p className="text-sm text-red-400">{error}</p>}
+          <button
+            onClick={cancelarBusqueda}
+            className="border border-border text-foreground rounded-full px-5 py-2.5 text-sm transition-all duration-200 active:scale-95"
+          >
             Cancelar búsqueda
           </button>
         </div>
       )}
 
       {paso === "lavador_encontrado" && ofertaLavador && (
-        <div className="space-y-3">
-          <h2 className="font-medium">¡Un lavador aceptó tu pedido!</h2>
+        <div className="space-y-4">
+          <h2 className="font-display font-bold text-lg text-foreground tracking-tight">¡Un lavador aceptó tu pedido!</h2>
 
-          <div className="border rounded-md p-4 flex gap-4 items-center">
+          <div className="border border-border rounded-2xl p-4 flex gap-4 items-center bg-surface-raised">
             {ofertaLavador.fotoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
+              <Image
                 src={ofertaLavador.fotoUrl}
                 alt={ofertaLavador.nombre}
+                width={64}
+                height={64}
                 className="w-16 h-16 rounded-full object-cover flex-shrink-0"
               />
             ) : (
-              <div className="w-16 h-16 rounded-full bg-neutral-200 flex-shrink-0" />
+              <div className="w-16 h-16 rounded-full bg-surface flex-shrink-0" />
             )}
             <div className="flex-1">
-              <p className="font-medium">{ofertaLavador.nombre}</p>
-              <p className="text-xs text-neutral-500 flex items-center gap-1">
+              <p className="font-medium text-foreground">{ofertaLavador.nombre}</p>
+              <p className="text-xs text-foreground-muted flex items-center gap-1">
                 <EstrellasRating puntaje={ofertaLavador.rating_promedio} size={12} />
                 {ofertaLavador.rating_promedio.toFixed(1)} ({ofertaLavador.cantidad_calificaciones})
               </p>
-              <p className="font-medium mt-1">${precioFinal?.toLocaleString("es-AR")}</p>
+              <p className="font-semibold text-foreground mt-1">${precioFinal?.toLocaleString("es-AR")}</p>
               {distanciaLavadorKm != null && (
-                <p className="text-xs text-neutral-500">A {distanciaLavadorKm.toFixed(1)} km tuyo</p>
+                <p className="text-xs text-foreground-muted">A {distanciaLavadorKm.toFixed(1)} km tuyo</p>
               )}
               {fechaLimiteExpress && (
-                <p className="text-xs text-amber-600">
+                <p className="text-xs text-amber-400">
                   Se compromete a tenerlo listo antes de las{" "}
                   {new Date(fechaLimiteExpress).toLocaleTimeString("es-AR", {
                     hour: "2-digit",
@@ -878,20 +900,26 @@ export function PedirLavadoWizard({
                 href={`/lavadores/${ofertaLavador.id}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-xs underline text-neutral-500"
+                className="text-xs underline text-foreground-muted hover:text-foreground transition-colors duration-200"
               >
                 Ver perfil
               </a>
             </div>
           </div>
 
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-sm text-red-400">{error}</p>}
 
           <div className="flex gap-2">
-            <button onClick={buscarOtro} className="flex-1 border rounded-md px-4 py-2">
+            <button
+              onClick={buscarOtro}
+              className="flex-1 border border-border text-foreground rounded-full px-5 py-3.5 transition-all duration-200 active:scale-95"
+            >
               Buscar otro
             </button>
-            <button onClick={pagar} className="flex-1 bg-neutral-900 text-white rounded-md px-4 py-2">
+            <button
+              onClick={pagar}
+              className="flex-1 bg-accent text-accent-foreground rounded-full px-6 py-3.5 font-semibold shadow-lg shadow-accent/20 transition-all duration-200 active:scale-95"
+            >
               Aceptar y pagar
             </button>
           </div>

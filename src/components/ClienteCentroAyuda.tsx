@@ -29,17 +29,17 @@ export function ClienteCentroAyuda() {
   const [abierta, setAbierta] = useState<number | null>(null);
 
   return (
-    <div className="border rounded-md p-4 space-y-2">
-      <h2 className="font-medium">Centro de ayuda</h2>
+    <div className="border border-border rounded-2xl p-4 space-y-1 bg-surface">
+      <h2 className="font-semibold text-foreground mb-1">Centro de ayuda</h2>
       {PREGUNTAS.map((p, i) => (
-        <div key={i} className="border-t pt-2">
+        <div key={i} className="border-t border-border pt-2 first:border-t-0 first:pt-0">
           <button
             onClick={() => setAbierta(abierta === i ? null : i)}
-            className="w-full text-left text-sm font-medium"
+            className="w-full text-left text-sm font-medium text-foreground py-1 transition-colors duration-200"
           >
             {p.q}
           </button>
-          {abierta === i && <p className="text-sm text-neutral-600 pt-1">{p.a}</p>}
+          {abierta === i && <p className="text-sm text-foreground-muted pb-2">{p.a}</p>}
         </div>
       ))}
     </div>

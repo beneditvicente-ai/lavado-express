@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { notificarLavadores } from "@/lib/push";
 
 // Nace SIN lavador (estado 'buscando'). A diferencia de express, para
 // programado el cliente ELIGE a que lavadores invitar (de la lista de
@@ -96,6 +97,17 @@ export async function POST(req: Request) {
     estado_nuevo: "buscando",
     actor: "sistema",
   });
+
+  try {
+    const { data: zona } = await admin.from("zonas_disponibles").select("nombre").eq("id", zona_id).single();
+    await notificarLavadores(lavador_ids as string[], {
+      titulo: "Te invitaron a un turno",
+      cuerpo: `Un cliente te invitó a un lavado programado${zona?.nombre ? ` en ${zona.nombre}` : ""}.`,
+      url: "/lavador/pedidos",
+    });
+  } catch (e) {
+    console.error("[push] error notificando invitación programada:", e);
+  }
 
   return NextResponse.json({ pedidoId: pedido.id });
 }
